@@ -8,6 +8,13 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.4-yk] - 2026-11-24
+
+### Changed
+
+- all sensors unavailable when Connected and Auto status updates are both off
+- Connected switch turns back off if enabling it fails to connect
+
 ## [0.3.3-yk] - 2026-11-24
 
 ### Changed

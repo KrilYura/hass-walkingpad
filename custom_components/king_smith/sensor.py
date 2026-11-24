@@ -162,6 +162,9 @@ class WalkingPadSensor(
     @property
     def available(self) -> bool:
         """Return if entity is available."""
+        if not self.coordinator.status_reporting_enabled:
+            return False
+
         # State stays available so it can report "off" when the pad is unreachable.
         if self.entity_description.key == "walkingpad_state":
             return True

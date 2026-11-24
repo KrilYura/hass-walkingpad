@@ -57,6 +57,11 @@ class WalkingPadCoordinator(DataUpdateCoordinator[WalkingPadStatus]):
         """Return True when periodic status polling is enabled."""
         return self.stay_connected or self.auto_status_updates
 
+    @property
+    def status_reporting_enabled(self) -> bool:
+        """Return True when sensors have an active status source."""
+        return self._refresh_should_run()
+
     def _apply_update_interval(self) -> None:
         """Enable or disable the periodic refresh based on toggle state."""
         if self._refresh_should_run():
@@ -103,27 +108,43 @@ class WalkingPadCoordinator(DataUpdateCoordinator[WalkingPadStatus]):
         """Get the device connection status."""
         return self.walkingpad_device.connected
 
+    async def _async_revert_stay_connected(self) -> None:
+        """Turn stay-connected off after a failed connection attempt."""
+        _LOGGER.warning(
+            "Unable to connect to WalkingPad; turning Connected off"
+        )
+        self.stay_connected = False
+        self.walkingpad_device.stay_connected = False
+        self._apply_update_interval()
+        self.async_update_listeners()
+
     async def async_set_stay_connected(self, enabled: bool) -> None:
         """Persist the stay-connected preference and apply it."""
-        if self.stay_connected == enabled:
-            if enabled and not self.connected and self._listeners:
-                await self.walkingpad_device.connect()
-            return
-
-        self.stay_connected = enabled
-        self.walkingpad_device.stay_connected = enabled
-        self._apply_update_interval()
-        _LOGGER.debug("Stay connected set to %s", enabled)
-
-        if enabled:
-            if self._listeners:
-                await self.walkingpad_device.connect()
-                await self.async_request_refresh()
-        else:
+        if not enabled:
+            if not self.stay_connected:
+                return
+            self.stay_connected = False
+            self.walkingpad_device.stay_connected = False
+            self._apply_update_interval()
+            _LOGGER.debug("Stay connected set to False")
             await self.walkingpad_device.disconnect()
             if self.auto_status_updates:
                 await self.async_request_refresh()
+            self.async_update_listeners()
+            return
 
+        # Enabling stay-connected: connect now, otherwise revert to off.
+        self.stay_connected = True
+        self.walkingpad_device.stay_connected = True
+        self._apply_update_interval()
+        _LOGGER.debug("Stay connected set to True")
+
+        await self.walkingpad_device.connect()
+        if not self.connected:
+            await self._async_revert_stay_connected()
+            return
+
+        await self.async_request_refresh()
         self.async_update_listeners()
 
     async def async_set_auto_status_updates(self, enabled: bool) -> None:

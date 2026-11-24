@@ -131,6 +131,8 @@ class WalkingPadSpeedNumberEntity(
     @property
     def available(self) -> bool:
         """Return if entity is available."""
+        if not self.coordinator.status_reporting_enabled:
+            return False
         if self.coordinator.data.get("belt_state") == BeltState.OFF:
             return False
         if self.coordinator.stay_connected:
