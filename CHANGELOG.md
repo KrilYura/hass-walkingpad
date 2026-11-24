@@ -8,6 +8,11 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Connected switch to keep or release the BLE link (off frees the remote / other clients)
+- Auto status updates switch for connect → status → disconnect polling when Connected is off
+
 ### Fixed
 
 - link sensor, switch, and number entities to the WalkingPad device registry entry

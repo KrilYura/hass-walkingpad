@@ -34,6 +34,8 @@ class WalkingPad:
         self._controller.log_messages_info = False
         self._callbacks = []
         self._connection_status = WalkingPadConnectionStatus.NOT_CONNECTED
+        # When False, control commands release the BLE link after completing.
+        self.stay_connected = True
         self._register_controller_callbacks()
 
     def _register_controller_callbacks(self):
@@ -44,6 +46,11 @@ class WalkingPad:
 
     async def _end_cmd(self):
         await asyncio.sleep(0.75)
+
+    async def _maybe_release(self) -> None:
+        """Disconnect after a command when stay-connected mode is off."""
+        if not self.stay_connected:
+            await self.disconnect()
 
     def _on_status_update(self, sender, data: WalkingPadCurStatus) -> None:
         """Update current state."""
@@ -151,9 +158,10 @@ class WalkingPad:
             except BleakError as err:
                 _LOGGER.warning("Bluetooth error : %s", err)
                 self._connection_status = WalkingPadConnectionStatus.NOT_CONNECTED
+        await self._maybe_release()
 
     async def stop_belt(self) -> None:
-        """Start the belt."""
+        """Stop the belt."""
         if self._connection_status == WalkingPadConnectionStatus.NOT_CONNECTED:
             await self.connect()
         lock = self._begin_cmd()
@@ -165,6 +173,7 @@ class WalkingPad:
             except BleakError as err:
                 _LOGGER.warning("Bluetooth error : %s", err)
                 self._connection_status = WalkingPadConnectionStatus.NOT_CONNECTED
+        await self._maybe_release()
 
     async def set_speed(self, speed: float) -> None:
         """Set the belt speed in km/h."""
@@ -180,6 +189,7 @@ class WalkingPad:
             except BleakError as err:
                 _LOGGER.warning("Bluetooth error : %s", err)
                 self._connection_status = WalkingPadConnectionStatus.NOT_CONNECTED
+        await self._maybe_release()
 
     async def switch_mode(self, mode: WalkingPadMode) -> None:
         """Switch the WalkingPad mode."""
@@ -194,3 +204,4 @@ class WalkingPad:
             except BleakError as err:
                 _LOGGER.warning("Bluetooth error : %s", err)
                 self._connection_status = WalkingPadConnectionStatus.NOT_CONNECTED
+        await self._maybe_release()

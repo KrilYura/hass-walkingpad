@@ -162,4 +162,7 @@ class WalkingPadSensor(
     @property
     def available(self) -> bool:
         """Return if entity is available."""
-        return self.coordinator.connected
+        if self.coordinator.stay_connected:
+            return self.coordinator.connected
+        # Connect-on-demand keeps last known values between polls.
+        return True

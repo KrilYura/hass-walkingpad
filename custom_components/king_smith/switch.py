@@ -1,5 +1,7 @@
 """Walkingpad switch support."""
 
+from __future__ import annotations
+
 import asyncio
 from abc import ABC
 from typing import Any
@@ -10,9 +12,11 @@ from homeassistant.components.switch import (
     SwitchEntityDescription,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import STATE_ON
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from . import WalkingPadIntegrationData
 from .const import (
@@ -29,33 +33,115 @@ from .entity import walkingpad_device_info
 from .utils import TemporaryValue
 
 SWITCH_KEY = "walkingpad_belt_switch"
+CONNECTED_KEY = "walkingpad_connected"
+AUTO_STATUS_UPDATES_KEY = "walkingpad_auto_status_updates"
 
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    """Set up the WalkingPad switch."""
+    """Set up the WalkingPad switches."""
 
     entry_data: WalkingPadIntegrationData = hass.data[DOMAIN][entry.entry_id]
     coordinator = entry_data["coordinator"]
 
-    if not entry.options.get(CONF_REMOTE_CONTROL_ENABLED, False):
+    entities: list[SwitchEntity] = [
+        WalkingPadConnectedSwitch(coordinator),
+        WalkingPadAutoStatusUpdatesSwitch(coordinator),
+    ]
+
+    if entry.options.get(CONF_REMOTE_CONTROL_ENABLED, False):
+        preferred_mode = entry.options.get(CONF_PREFERRED_MODE, DEFAULT_PREFERRED_MODE)
+        manual_mode = WalkingPadMode.MANUAL.name.lower()
+        if preferred_mode == manual_mode:
+            entities.append(WalkingPadBeltSwitchManual(coordinator))
+        else:
+            entities.append(WalkingPadBeltSwitchAuto(coordinator))
+    else:
         entity_registry = er.async_get(hass)
         mac_address = entry.data.get(CONF_MAC)
         unique_id = f"{mac_address}-{SWITCH_KEY}"
-
         entity_id = entity_registry.async_get_entity_id("switch", DOMAIN, unique_id)
         if entity_id:
             entity_registry.async_remove(entity_id)
-        return
 
-    preferred_mode = entry.options.get(CONF_PREFERRED_MODE, DEFAULT_PREFERRED_MODE)
-    manual_mode = WalkingPadMode.MANUAL.name.lower()
+    async_add_entities(entities)
 
-    if preferred_mode == manual_mode:
-        async_add_entities([WalkingPadBeltSwitchManual(coordinator)])
-    else:
-        async_add_entities([WalkingPadBeltSwitchAuto(coordinator)])
+
+class WalkingPadConnectedSwitch(SwitchEntity, RestoreEntity):
+    """Toggle that keeps a persistent BLE connection when on."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = CONNECTED_KEY
+    _attr_icon = "mdi:bluetooth-connect"
+    _attr_device_class = SwitchDeviceClass.SWITCH
+
+    def __init__(self, coordinator: WalkingPadCoordinator) -> None:
+        """Initialize the connected switch."""
+        self.coordinator = coordinator
+        self._attr_unique_id = f"{coordinator.walkingpad_device.mac}-{CONNECTED_KEY}"
+        self._attr_device_info = walkingpad_device_info(coordinator.walkingpad_device)
+
+    @property
+    def is_on(self) -> bool:
+        """Return true when stay-connected mode is enabled."""
+        return self.coordinator.stay_connected
+
+    async def async_added_to_hass(self) -> None:
+        """Restore the previous preference and apply it."""
+        await super().async_added_to_hass()
+        last_state = await self.async_get_last_state()
+        enabled = True if last_state is None else last_state.state == STATE_ON
+        await self.coordinator.async_set_stay_connected(enabled)
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Enable persistent BLE connection."""
+        await self.coordinator.async_set_stay_connected(True)
+        self.async_write_ha_state()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Disable persistent BLE connection."""
+        await self.coordinator.async_set_stay_connected(False)
+        self.async_write_ha_state()
+
+
+class WalkingPadAutoStatusUpdatesSwitch(SwitchEntity, RestoreEntity):
+    """Toggle periodic connect-get-status-disconnect when not stay-connected."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = AUTO_STATUS_UPDATES_KEY
+    _attr_icon = "mdi:update"
+    _attr_device_class = SwitchDeviceClass.SWITCH
+
+    def __init__(self, coordinator: WalkingPadCoordinator) -> None:
+        """Initialize the auto status updates switch."""
+        self.coordinator = coordinator
+        self._attr_unique_id = (
+            f"{coordinator.walkingpad_device.mac}-{AUTO_STATUS_UPDATES_KEY}"
+        )
+        self._attr_device_info = walkingpad_device_info(coordinator.walkingpad_device)
+
+    @property
+    def is_on(self) -> bool:
+        """Return true when auto status updates are enabled."""
+        return self.coordinator.auto_status_updates
+
+    async def async_added_to_hass(self) -> None:
+        """Restore the previous preference and apply it."""
+        await super().async_added_to_hass()
+        last_state = await self.async_get_last_state()
+        enabled = True if last_state is None else last_state.state == STATE_ON
+        await self.coordinator.async_set_auto_status_updates(enabled)
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Enable periodic status polling."""
+        await self.coordinator.async_set_auto_status_updates(True)
+        self.async_write_ha_state()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Disable periodic status polling."""
+        await self.coordinator.async_set_auto_status_updates(False)
+        self.async_write_ha_state()
 
 
 class WalkingPadBeltSwitchBase(SwitchEntity, ABC):

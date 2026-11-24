@@ -95,6 +95,12 @@
             }
         },
         "switch": {
+            "walkingpad_connected": {
+                "name": "Connected"
+            },
+            "walkingpad_auto_status_updates": {
+                "name": "Auto status updates"
+            },
             "walkingpad_belt_switch": {
                 "name": "Belt"
             },
