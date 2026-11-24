@@ -8,10 +8,12 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0-yk] - 2026-11-24
+
 ### Added
 
 - Connected switch to keep or release the BLE link (off frees the remote / other clients)
-- Auto status updates switch for connect → status → disconnect polling when Connected is off
+- Auto status updates switch for connect → status → disconnect polling when Connected is off (1 minute interval)
 
 ### Fixed
 

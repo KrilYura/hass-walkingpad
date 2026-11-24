@@ -43,20 +43,20 @@
     }
   ],
   "codeowners": [
-    "@madmatah"
+    "@KrilYura"
   ],
   "config_flow": true,
   "dependencies": [
     "bluetooth_adapters"
   ],
-  "documentation": "https://github.com/madmatah/hass-walkingpad",
+  "documentation": "https://github.com/KrilYura/hass-walkingpad",
   "integration_type": "device",
   "iot_class": "local_polling",
-  "issue_tracker": "https://github.com/madmatah/hass-walkingpad/issues",
+  "issue_tracker": "https://github.com/KrilYura/hass-walkingpad/issues",
   "requirements": [
     "ph4-walkingpad==1.0.2"
   ],
   "ssdp": [],
-  "version": "0.3.0",
+  "version": "0.3.0-yk",
   "zeroconf": []
 }
