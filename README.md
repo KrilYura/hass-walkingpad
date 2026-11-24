@@ -4,128 +4,118 @@
 [![GitHub Activity][commits-shield]][commits]
 [![License][license-shield]](LICENSE)
 
----
-![Maintenance](https://img.shields.io/badge/Maintenance-Limited-orange.svg)
+Fork of [madmatah/hass-walkingpad](https://github.com/madmatah/hass-walkingpad) with connect-on-demand BLE control so the physical remote (and other clients) can share the WalkingPad’s single Bluetooth connection.
 
-> [!WARNING]
-> **Project Status: Limited Maintenance** > This project is no longer actively maintained. I may push occasional critical updates, but please do not expect new features or active support. Responses to Issues or PRs will be delayed or absent.
-
-### Forks & Alternatives
-**Feel free to fork this repository** if you wish to continue development!
-
-*@mcdax* has created a fork with support for new devices using the **FTMS** (Fitness Machine Service) protocol.  
-👉 **Check it out here:** [mcdax/hass-walkingpad](https://github.com/mcdax/hass-walkingpad)
+For FTMS / newer KingSmith protocols, see also [mcdax/hass-walkingpad](https://github.com/mcdax/hass-walkingpad).
 
 ---
 
-**This integration will set up the following platforms.**
+**This integration sets up the following platforms.**
 
 Platform | Description
 -- | --
-`sensor` | WalkingPad usage metrics.
-`switch` | Belt control (requires remote control to be enabled).
-`number` | Speed control in manual mode (requires remote control to be enabled).
+`sensor` | WalkingPad usage metrics (distance, steps, duration, speed, state, mode).
+`switch` | **Connected**, **Auto status updates**, and optional belt control (when HA remote control is enabled).
+`number` | **Update interval** (seconds), plus optional speed control in manual mode (when HA remote control is enabled).
 
 ## Installation
 
 ### HACS
-1. Open the HACS dashboard then click `Integrations`,
+1. Open the HACS dashboard then click `Integrations`
 1. Click the `3 dots menu` on the top right corner
 1. Click `Custom repository`
-1. Enter the repo url `https://github.com/madmatah/hass-walkingpad`
-1. Chose a the `Integration` category then **Submit**
+1. Enter the repo url `https://github.com/KrilYura/hass-walkingpad`
+1. Choose the `Integration` category then **Submit**
 1. Click on the new `Kingsmith WalkingPad` repo
-1. Click on `Download` on the bottom right corner.
+1. Click on `Download` on the bottom right corner
 1. Restart Home Assistant
 
 ### Manual
-1. Using the tool of choice open the directory (folder) for your HA configuration (where you find `configuration.yaml`).
-1. If you do not have a `custom_components` directory (folder) there, you need to create it.
-1. In the `custom_components` directory (folder) create a new folder called `king_smith`.
-1. Download _all_ the files from the `custom_components/king_smith/` directory (folder) in this repository.
-1. Place the files you downloaded in the new directory (folder) you created.
+1. Open the directory for your HA configuration (where you find `configuration.yaml`)
+1. If there is no `custom_components` directory, create it
+1. In `custom_components` create a folder called `king_smith`
+1. Copy all files from `custom_components/king_smith/` in this repository into that folder
 1. Restart Home Assistant
-1. In the HA UI go to "Configuration" -> "Integrations" click "+" and search for "WalkingPad"
+1. In the HA UI go to **Settings → Devices & services**, click **Add integration**, and search for **WalkingPad**
 
 ## Configuration
 
-To add your WalkingPad device to Home assistant, you must have a bluetooth adapter configured or a bluetooth proxy. This part is documented in the [Bluetooth](https://www.home-assistant.io/integrations/bluetooth/) page of the official Home Assistant documentation.
+You need a Bluetooth adapter or an ESPHome Bluetooth proxy. See the official [Bluetooth](https://www.home-assistant.io/integrations/bluetooth/) docs.
 
-Before all, ensure that your WalkingPad device is not connected to any device, or it will not be detected.
+Before pairing/discovery, make sure nothing else is connected to the WalkingPad (phone app, another HA instance, etc.).
 
-This custom integration offers 2 configuration modes :
+The WalkingPad accepts **only one BLE client at a time**. While this integration holds the link, the hand remote and KS Fit cannot connect.
 
 ### 1. Automatic bluetooth discovery
 
-Your WalkingPad can be detected automatically by HomeAssistant if its name is recognized by this integration.
+If the pad’s BLE name matches a known pattern, Home Assistant can discover it under **Settings → Devices & services**.
 
-In this case, you will see a new discovered device in `Settings > Devices & Services`.
+![Discovered device](./assets/images/discovered-device.png)
 
-![Disvocered device](./assets/images/discovered-device.png)
-
-Just click and configure and enter a friendly name for your device:
+Configure it and give it a friendly name:
 
 ![Automatic config flow](./assets/images/bluetooth-config-flow.png)
 
-
-That's it!
-
-If your device is not detected, read the [FAQ](#my-walkingpad-device-is-not-detected) and try to use the Manual configuration mode.
+If it is not discovered, use manual configuration (see [FAQ](#my-walkingpad-device-is-not-detected)).
 
 ### 2. Manual configuration
 
-In `Settings > Devices & Services`, click on `Add integration` and look for `KingSmith WalkingPad` brand.
-
-If you click on it, it will open the manual configuration form:
+**Settings → Devices & services → Add integration → KingSmith WalkingPad**
 
 ![Manual configuration](./assets/images/manual-config-flow.png)
 
+Enter the MAC address and a friendly name.
 
-Enter your device MAC address in the "device" field and a friendly name in the "name" field.
+Setup can succeed even if the pad is powered off; the integration connects later when the pad is available.
 
-See the [FAQ](#my-walkingpad-device-is-not-detected) for more details.
+### 3. Connection control (Connected / Auto status updates)
 
-### 3. Remote control
+These entities are always created:
 
-This integration supports remote control of your WalkingPad device, allowing you to start/stop the belt and adjust speed directly from Home Assistant. However, **remote control is disabled by default** for safety reasons, as it can create dangerous situations.
+| Entity | Role |
+| --- | --- |
+| **Connected** | When **on**, keeps a persistent BLE connection and polls status (legacy behaviour). Turns **off** automatically if connect fails, the link drops, or a status update times out. |
+| **Auto status updates** | When **Connected** is **off** and this is **on**, each poll does connect → read status → disconnect, so the hand remote can use the pad between polls. Unavailable (greyed out) while **Connected** is on. |
+| **Update interval** | Poll period in seconds (default `60`). Next poll starts after the previous one finishes, plus this interval. |
 
-To enable remote control, you can either:
-- Activate it during the initial setup (automatic or manual configuration) by expanding the "Remote control" section in the configuration form
-- Enable it later by going to `Settings > Devices & Services`, selecting your WalkingPad integration, clicking on the three dots menu, and choosing "Configure"
+Typical modes:
 
-Once enabled, you need to select a preferred mode that determines how the remote control behaves:
+| Connected | Auto status updates | Behaviour |
+| --- | --- | --- |
+| On | (ignored) | Stay on BLE; live sensors; hand remote blocked |
+| Off | On | Brief connect each interval; remote works between polls |
+| Off | Off | No polling; all sensors unavailable; remote free |
+
+**State** sensor values include `off` when the pad is unreachable. Other metrics go unavailable while state is `off`. If both connection toggles are off, all sensors are unavailable.
+
+### 4. Remote control (from Home Assistant)
+
+Optional HA start/stop/speed control (not the physical remote). **Disabled by default** for safety.
+
+Enable it during setup (expand **Remote control**) or later via the integration **Configure** menu, then choose a preferred mode:
 
 #### Manual mode (default)
 
-When manual mode is selected:
-- A **switch entity** is created that directly controls the belt start/stop. Turning the switch on starts the belt, turning it off stops it.
-- A **number entity** is created for speed control, allowing you to set the belt speed between 0.5 and 6.0 km/h (in increments of 0.1 km/h). The speed can only be adjusted when the belt is active or starting.
+- Belt **switch**: on starts the belt, off stops it
+- Speed **number**: 0.5–6.0 km/h in 0.1 steps (only while the belt is active or starting)
 
 #### Auto mode
 
-When auto mode is selected:
-- A **switch entity** is created that controls the WalkingPad mode switching. Turning the switch on switches the device to AUTO mode (the belt will start automatically when motion is detected), turning it off switches it to STANDBY mode.
-- No speed control is available in auto mode, as the WalkingPad automatically adjusts the speed based on detected motion.
+- Switch selects WalkingPad **AUTO** vs **STANDBY**
+- No speed entity (the pad adjusts speed from motion)
 
-**Important safety note**: Always ensure the WalkingPad area is clear before using remote control features. Use these features at your own risk.
-
-<!---->
+**Safety:** keep the belt area clear. Use at your own risk.
 
 ## FAQ
 
 ### My WalkingPad device is not detected
 
-First, make sure no other Bluetooth device is connected to your WalkingPad.
+Make sure no other Bluetooth client is connected to the pad.
 
-If your device is still not automatically detected by Home Assistant, it's
-probably due to the fact that its bluetooth name is unknown. In this
-case, you can try to add it manually to Home Assistant.
+If automatic discovery still fails, the BLE name may be unknown — add it manually.
 
-First, launch a LE scan from your host system (or any other device with a
-Bluetooth LE scanner application) to get the MAC address of your WalkingPad
-device.
+Scan for the MAC address, for example on Linux:
 
-For example, to launch a bluetooth LE scan, on linux, you can run:
 ```
 $> sudo hcitool lescan
 
@@ -134,30 +124,25 @@ LE Scan ...
 85:AA:BB:CC:EE:FF KS-ST-A1P
 ```
 
-Note the MAC address (`85:AA:BB:CC:DD:FF` in the previous example), then go to
-`Home Assistant` > `Settings` > `Devices and Services` > `Add integration` > Search for `Kingsmith Walkingpad`.
+Then **Settings → Devices & services → Add integration → Kingsmith Walkingpad**, enter the MAC and a name.
 
-It should open the manual configuration form. Enter the MAC address in the
-`Device` form field, any the name of your choice in the `Name` field.
-Click on `Submit` and cross your fingers!
+If it works, open an issue with the Bluetooth name and model so discovery can be extended.
 
-If it works, please open an issue here and tell me the Bluetooth name of your
-WalkingPad and which model it corresponds to. This will enable me to activate
-automatic detection for this model.
+### The hand remote stops working
+
+The pad allows one BLE connection. Turn **Connected** **off** (and optionally leave **Auto status updates** on for periodic HA stats). With **Connected** on, the remote is blocked.
+
+### Sensors stay on old values after I power the pad off
+
+Update to the latest `*-yk` release. Unreachable pads should move **State** to `off` and mark other sensors unavailable within about one update interval.
 
 ## FAQ for developers
 
 ### How to enable my bluetooth adapter in the devcontainer ?
 
-I've wasted some time on this problem, so here are a few pointers to get a working development environment.
-I assume you're running Linux. Sorry, I don't know how to do this for other operating systems.
-
-Everything is documented on the [Home Assistant Bluetooth page](https://www.home-assistant.io/integrations/bluetooth#additional-details-for-container-core-and-supervised-installs), but here is a summary of the
-steps to be performed **on your host system**:
+Pointers for a Linux host (see also the [Home Assistant Bluetooth page](https://www.home-assistant.io/integrations/bluetooth#additional-details-for-container-core-and-supervised-installs)):
 
 #### 1. Install and enable DBus-Broker
-
-See the [official dbus-broker instructions](https://github.com/bus1/dbus-broker/wiki) for more details. On Ubuntu I had to run the following commands:
 
 ```
 sudo apt install dbus-broker
@@ -165,35 +150,32 @@ sudo systemctl enable dbus-broker.service
 sudo systemctl --global enable dbus-broker.service
 
 reboot
-````
+```
 
 #### 2. Ensure that bluez is installed
 
-You need to have Bluez >= 5.63 installed on your host system.
+Bluez >= 5.63 on the host.
 
 #### 3. Ensure that your dbus socket is in /run/dbus
 
-It should be OK in most case, but if your DBus socket is not
-in `/run/dbus`, you might have to tweak the .devcontainer.json (see `runArgs`).
-
+Otherwise tweak `.devcontainer.json` (`runArgs`).
 
 #### 4. Profit
 
-Then, you can run the devcontainer and start Home Assistant with `scripts/develop`.
-
-You might have a TLS error on the first run in the logs. Just restart the command and everything should be fine, your bluetooth adapter should be detected by Home Assistant.
-
+Run the devcontainer and start Home Assistant with `scripts/develop`. A TLS error on the first run is common — restart the command once.
 
 ## Acknowledgements
 
-This project uses [ph4-walkingpad](https://github.com/ph4r05/ph4-walkingpad) library to control the WalkingPad device. Thanks [@ph4r05](https://github.com/ph4r05)!
+Based on [madmatah/hass-walkingpad](https://github.com/madmatah/hass-walkingpad).
 
-This project takes inspiration and code from [@indiefan](https://github.com/indiefan)'s [king smith](https://github.com/indiefan/king_smith) custom integration.
+Uses [ph4-walkingpad](https://github.com/ph4r05/ph4-walkingpad) ([@ph4r05](https://github.com/ph4r05)).
+
+Inspired by [@indiefan](https://github.com/indiefan)’s [king_smith](https://github.com/indiefan/king_smith) integration.
 
 ***
 
-[commits-shield]: https://img.shields.io/github/commit-activity/y/madmatah/hass-walkingpad.svg?style=for-the-badge
-[commits]: https://github.com/madmatah/hass-walkingpad/commits/main
-[license-shield]: https://img.shields.io/github/license/madmatah/hass-walkingpad.svg?style=for-the-badge
-[releases-shield]: https://img.shields.io/github/release/madmatah/hass-walkingpad.svg?style=for-the-badge
-[releases]: https://github.com/madmatah/hass-walkingpad/releases
+[commits-shield]: https://img.shields.io/github/commit-activity/y/KrilYura/hass-walkingpad.svg?style=for-the-badge
+[commits]: https://github.com/KrilYura/hass-walkingpad/commits/main
+[license-shield]: https://img.shields.io/github/license/KrilYura/hass-walkingpad.svg?style=for-the-badge
+[releases-shield]: https://img.shields.io/github/release/KrilYura/hass-walkingpad.svg?style=for-the-badge
+[releases]: https://github.com/KrilYura/hass-walkingpad/releases

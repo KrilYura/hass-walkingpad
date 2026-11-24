@@ -96,6 +96,11 @@ class WalkingPadCoordinator(DataUpdateCoordinator[WalkingPadStatus]):
 
     async def _async_handle_unexpected_disconnect(self) -> None:
         """Revert Connected and publish offline status after a link drop."""
+        # Auto status updates intentionally disconnect after each poll.
+        # That must not wipe the last reading or mark sensors unavailable.
+        if not self.stay_connected:
+            self.async_update_listeners()
+            return
         status = await self._async_mark_unreachable()
         self.async_set_updated_data(status)
 

@@ -47,6 +47,7 @@ class WalkingPad:
         self._callbacks = []
         self._disconnect_callbacks = []
         self._connection_status = WalkingPadConnectionStatus.NOT_CONNECTED
+        self._ignore_disconnect_callback = False
         # When False, control commands release the BLE link after completing.
         self.stay_connected = True
         self._register_controller_callbacks()
@@ -64,10 +65,11 @@ class WalkingPad:
             self._connection_status == WalkingPadConnectionStatus.CONNECTED
         )
         self._connection_status = WalkingPadConnectionStatus.NOT_CONNECTED
-        if was_connected:
-            _LOGGER.info("WalkingPad BLE link disconnected")
-            for callback in self._disconnect_callbacks:
-                callback()
+        if self._ignore_disconnect_callback or not was_connected:
+            return
+        _LOGGER.info("WalkingPad BLE link disconnected")
+        for callback in self._disconnect_callbacks:
+            callback()
 
     def _attach_disconnect_callback(self) -> None:
         """Attach disconnect callback to the active Bleak client if possible."""
@@ -194,12 +196,14 @@ class WalkingPad:
             return
         lock = self._begin_cmd()
         async with lock:
+            self._ignore_disconnect_callback = True
             try:
                 await asyncio.wait_for(self._controller.disconnect(), timeout=3)
             except (BleakError, TimeoutError, Exception):  # pylint: disable=broad-except
                 _LOGGER.debug("Disconnect finished with error", exc_info=True)
             finally:
                 self._connection_status = WalkingPadConnectionStatus.NOT_CONNECTED
+                self._ignore_disconnect_callback = False
 
     async def update_state(self) -> None:
         """Update device state."""
