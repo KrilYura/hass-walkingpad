@@ -40,6 +40,7 @@ from .coordinator import WalkingPadCoordinator
 from .walkingpad import WalkingPad
 
 PLATFORMS: list[Platform] = [
+    Platform.BINARY_SENSOR,
     Platform.SENSOR,
     Platform.SWITCH,
     Platform.NUMBER,

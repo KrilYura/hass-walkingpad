@@ -68,6 +68,11 @@
         }
     },
     "entity": {
+        "binary_sensor": {
+            "walkingpad_connection_status": {
+                "name": "Connection status"
+            }
+        },
         "sensor": {
             "walkingpad_current_speed": {
                 "name": "Current speed"

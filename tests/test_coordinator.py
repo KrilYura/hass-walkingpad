@@ -34,6 +34,7 @@ def _mock_device(*, connected: bool = False) -> MagicMock:
     device.is_currently_visible = MagicMock(return_value=True)
     device.register_status_callback = MagicMock()
     device.register_disconnect_callback = MagicMock()
+    device.register_connection_callback = MagicMock()
     return device
 
 
@@ -139,3 +140,17 @@ async def test_set_passive_disconnects(hass: MagicMock) -> None:
     assert coordinator.connection_mode is ConnectionMode.PASSIVE
     device.disconnect.assert_awaited()
     assert coordinator.status_reporting_enabled is False
+
+
+@pytest.mark.asyncio
+async def test_connection_change_updates_listeners(hass: MagicMock) -> None:
+    """BLE connected-flag changes refresh coordinator listeners."""
+    entry = _mock_entry(ConnectionMode.POLLING)
+    device = _mock_device()
+    coordinator = _build_coordinator(hass, device, entry)
+
+    device.register_connection_callback.assert_called_once()
+    callback = device.register_connection_callback.call_args.args[0]
+    callback(True)
+
+    coordinator.async_update_listeners.assert_called()

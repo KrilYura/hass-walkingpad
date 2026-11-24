@@ -104,3 +104,18 @@ async def test_command_raises_when_connect_fails(walkingpad: WalkingPad) -> None
         pytest.raises(HomeAssistantError),
     ):
         await walkingpad.stop_belt()
+
+
+@pytest.mark.asyncio
+async def test_connection_callback_tracks_link(walkingpad: WalkingPad) -> None:
+    """Connection callbacks fire when the live BLE connected flag flips."""
+    events: list[bool] = []
+    walkingpad.register_connection_callback(events.append)
+
+    await walkingpad.connect()
+    assert events == [True]
+    assert walkingpad.connected
+
+    await walkingpad.disconnect()
+    assert events == [True, False]
+    assert not walkingpad.connected

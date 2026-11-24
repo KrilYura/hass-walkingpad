@@ -51,6 +51,7 @@ class WalkingPad:
         self._controller.log_messages_info = False
         self._callbacks: list[Callable[[WalkingPadStatus], None]] = []
         self._disconnect_callbacks: list[Callable[[], None]] = []
+        self._connection_callbacks: list[Callable[[bool], None]] = []
         self._connection_status = WalkingPadConnectionStatus.NOT_CONNECTED
         self._ignore_disconnect_callback = False
         self._lock = asyncio.Lock()
@@ -65,16 +66,36 @@ class WalkingPad:
         """Register a callback invoked on unexpected BLE disconnect."""
         self._disconnect_callbacks.append(callback)
 
+    def register_connection_callback(
+        self, callback: Callable[[bool], None]
+    ) -> None:
+        """Register a callback invoked when the live BLE connected flag changes."""
+        self._connection_callbacks.append(callback)
+
     def _notify_disconnect_callbacks(self) -> None:
         for callback in self._disconnect_callbacks:
             callback()
+
+    def _notify_connection_callbacks(self, connected: bool) -> None:
+        for callback in self._connection_callbacks:
+            callback(connected)
+
+    def _set_connection_status(self, status: WalkingPadConnectionStatus) -> None:
+        """Update connection status and notify when the connected flag flips."""
+        previous_connected = (
+            self._connection_status == WalkingPadConnectionStatus.CONNECTED
+        )
+        self._connection_status = status
+        now_connected = status == WalkingPadConnectionStatus.CONNECTED
+        if previous_connected != now_connected:
+            self._notify_connection_callbacks(now_connected)
 
     def _on_ble_disconnected(self, _client) -> None:
         """Handle Bleak reporting that the GATT link dropped."""
         was_connected = (
             self._connection_status == WalkingPadConnectionStatus.CONNECTED
         )
-        self._connection_status = WalkingPadConnectionStatus.NOT_CONNECTED
+        self._set_connection_status(WalkingPadConnectionStatus.NOT_CONNECTED)
         if self._ignore_disconnect_callback or not was_connected:
             return
         _LOGGER.info("WalkingPad BLE link disconnected")
@@ -188,7 +209,7 @@ class WalkingPad:
             return
 
         _LOGGER.info("Connecting to WalkingPad")
-        self._connection_status = WalkingPadConnectionStatus.CONNECTING
+        self._set_connection_status(WalkingPadConnectionStatus.CONNECTING)
         try:
             ble_device = self._resolve_ble_device()
             if ble_device is None:
@@ -196,21 +217,21 @@ class WalkingPad:
                     "WalkingPad %s is not currently visible via Bluetooth",
                     self._address,
                 )
-                self._connection_status = WalkingPadConnectionStatus.NOT_CONNECTED
+                self._set_connection_status(WalkingPadConnectionStatus.NOT_CONNECTED)
                 return
             await self._controller.run(ble_device)
             self._attach_disconnect_callback()
-            self._connection_status = WalkingPadConnectionStatus.CONNECTED
+            self._set_connection_status(WalkingPadConnectionStatus.CONNECTED)
             await self._end_cmd()
         except asyncio.CancelledError:
-            self._connection_status = WalkingPadConnectionStatus.NOT_CONNECTED
+            self._set_connection_status(WalkingPadConnectionStatus.NOT_CONNECTED)
             raise
         except (BleakError, TimeoutError) as err:
             _LOGGER.warning("Unable to connect to WalkingPad : %s", err)
-            self._connection_status = WalkingPadConnectionStatus.NOT_CONNECTED
+            self._set_connection_status(WalkingPadConnectionStatus.NOT_CONNECTED)
         except Exception:  # pylint: disable=broad-except
             _LOGGER.warning("Unable to connect to WalkingPad", exc_info=True)
-            self._connection_status = WalkingPadConnectionStatus.NOT_CONNECTED
+            self._set_connection_status(WalkingPadConnectionStatus.NOT_CONNECTED)
 
     async def disconnect(self) -> None:
         """Disconnect the device."""
@@ -227,7 +248,7 @@ class WalkingPad:
         except (BleakError, TimeoutError, Exception):  # pylint: disable=broad-except
             _LOGGER.debug("Disconnect finished with error", exc_info=True)
         finally:
-            self._connection_status = WalkingPadConnectionStatus.NOT_CONNECTED
+            self._set_connection_status(WalkingPadConnectionStatus.NOT_CONNECTED)
             self._ignore_disconnect_callback = False
 
     async def _ensure_connected_locked(self) -> None:
@@ -247,7 +268,7 @@ class WalkingPad:
                 result = await operation()
             except BleakError as err:
                 _LOGGER.warning("Bluetooth error : %s", err)
-                self._connection_status = WalkingPadConnectionStatus.NOT_CONNECTED
+                self._set_connection_status(WalkingPadConnectionStatus.NOT_CONNECTED)
                 self._ignore_disconnect_callback = True
                 try:
                     await asyncio.wait_for(self._controller.disconnect(), timeout=3)

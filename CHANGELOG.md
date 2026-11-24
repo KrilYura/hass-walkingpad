@@ -8,6 +8,12 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.1-yk] - 2026-11-25
+
+### Added
+
+- **Connection status** binary sensor reflecting the live BLE link (briefly on during polling; tracks the held link in persistent mode)
+
 ## [0.4.0-yk] - 2026-11-24
 
 ### Changed
@@ -125,7 +131,8 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 - current speed sensor
 - basic configuration guide in the README
 
-[unreleased]: https://github.com/KrilYura/hass-walkingpad/compare/0.4.0-yk...HEAD
+[unreleased]: https://github.com/KrilYura/hass-walkingpad/compare/0.4.1-yk...HEAD
+[0.4.1-yk]: https://github.com/KrilYura/hass-walkingpad/compare/0.4.0-yk...0.4.1-yk
 [0.4.0-yk]: https://github.com/KrilYura/hass-walkingpad/compare/0.3.6-yk...0.4.0-yk
 [0.3.6-yk]: https://github.com/KrilYura/hass-walkingpad/compare/0.3.5-yk...0.3.6-yk
 [0.3.5-yk]: https://github.com/KrilYura/hass-walkingpad/compare/0.3.4-yk...0.3.5-yk

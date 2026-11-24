@@ -49,6 +49,9 @@ class WalkingPadCoordinator(DataUpdateCoordinator[WalkingPadStatus]):
         self.walkingpad_device.register_disconnect_callback(
             self._async_on_device_disconnected
         )
+        self.walkingpad_device.register_connection_callback(
+            self._async_on_connection_change
+        )
 
         options = config_entry.options
         mode = parse_connection_mode(options.get(CONF_CONNECTION_MODE))
@@ -137,6 +140,11 @@ class WalkingPadCoordinator(DataUpdateCoordinator[WalkingPadStatus]):
         return self._offline_status()
 
     @callback
+    def _async_on_connection_change(self, _connected: bool) -> None:
+        """Refresh entities when the live BLE connected flag changes."""
+        self.async_update_listeners()
+
+    @callback
     def _async_on_device_disconnected(self) -> None:
         """Handle an unexpected BLE disconnect while persistent mode is on."""
         self.hass.async_create_task(self._async_handle_unexpected_disconnect())
@@ -145,7 +153,6 @@ class WalkingPadCoordinator(DataUpdateCoordinator[WalkingPadStatus]):
         """Fall back from persistent and publish offline status after a link drop."""
         # Polling intentionally disconnects after each poll.
         if self.connection_mode != ConnectionMode.PERSISTENT:
-            self.async_update_listeners()
             return
         status = await self._async_fall_back_to_polling(
             "WalkingPad BLE link disconnected"

@@ -14,6 +14,7 @@ For FTMS / newer KingSmith protocols, see also [mcdax/hass-walkingpad](https://g
 
 Platform | Description
 -- | --
+`binary_sensor` | **Connection status** — whether Home Assistant currently holds the BLE link.
 `sensor` | WalkingPad usage metrics (distance, steps, duration, speed, state, mode).
 `select` | **Connection mode** (`polling` / `persistent` / `passive`).
 `number` | **Update interval** (seconds), plus optional speed control in manual mode (when HA remote control is enabled).
@@ -73,11 +74,11 @@ Setup can succeed even if the pad is powered off; the integration connects later
 
 The WalkingPad’s single BLE slot is managed by one **Connection mode** select (default `polling`) and an **Update interval** number (default `60` seconds). The next poll starts after the previous one finishes, plus this interval.
 
-| Mode | Behaviour | Hand remote |
-| --- | --- | --- |
-| **Polling** | Each cycle: connect → read status → disconnect → wait interval | Free between polls |
-| **Persistent** | Keeps a BLE connection and polls status on the interval | Blocked while linked |
-| **Passive** | No polling; sensors unavailable | Free |
+| Mode | Behaviour | Hand remote | Connection status |
+| --- | --- | --- | --- |
+| **Polling** | Each cycle: connect → read status → disconnect → wait interval | Free between polls | Briefly on during each poll |
+| **Persistent** | Keeps a BLE connection and polls status on the interval | Blocked while linked | On while the link is held |
+| **Passive** | No polling; sensors unavailable | Free | Off |
 
 If **Persistent** cannot connect, the link drops, or a status update times out, the mode falls back to **Polling** so the remote can be used again.
 

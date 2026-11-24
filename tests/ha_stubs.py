@@ -45,6 +45,7 @@ def install_ha_stubs() -> None:
     const_mod = types.ModuleType("homeassistant.const")
 
     class Platform(str, Enum):
+        BINARY_SENSOR = "binary_sensor"
         SENSOR = "sensor"
         SWITCH = "switch"
         NUMBER = "number"
@@ -157,8 +158,17 @@ def install_ha_stubs() -> None:
     components.bluetooth = bluetooth
 
     # Platform stubs used only if those modules are imported.
-    for name in ("sensor", "switch", "number", "select"):
+    for name in ("binary_sensor", "sensor", "switch", "number", "select"):
         mod = types.ModuleType(f"homeassistant.components.{name}")
+        if name == "binary_sensor":
+            class BinarySensorDeviceClass(str, Enum):
+                CONNECTIVITY = "connectivity"
+
+            class BinarySensorEntity:
+                """Stub binary sensor entity."""
+
+            mod.BinarySensorDeviceClass = BinarySensorDeviceClass
+            mod.BinarySensorEntity = BinarySensorEntity
         sys.modules[f"homeassistant.components.{name}"] = mod
         setattr(components, name, mod)
 
