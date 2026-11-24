@@ -44,7 +44,7 @@
                         }
                     }
                 },
-                "description": "If your Walkingpad is ON, it should be automatically discovered by Home Assistant. Use manual configuration only if you know what you are doing.",
+                "description": "If your Walkingpad is ON, it should be automatically discovered by Home Assistant. Use manual configuration only if you know what you are doing. Setup can succeed even if the pad is powered off.",
                 "title": "Manual configuration of a Walkingpad"
             }
         }
@@ -99,16 +99,15 @@
                 }
             },
             "walkingpad_mode": {
-                "name": "Mode"
+                "name": "Mode",
+                "state": {
+                    "auto": "Auto",
+                    "manual": "Manual",
+                    "standby": "Standby"
+                }
             }
         },
         "switch": {
-            "walkingpad_connected": {
-                "name": "Connected"
-            },
-            "walkingpad_auto_status_updates": {
-                "name": "Auto status updates"
-            },
             "walkingpad_belt_switch": {
                 "name": "Belt"
             },
@@ -125,6 +124,16 @@
             },
             "walkingpad_speed": {
                 "name": "Speed"
+            }
+        },
+        "select": {
+            "walkingpad_connection_mode": {
+                "name": "Connection mode",
+                "state": {
+                    "polling": "Polling",
+                    "persistent": "Persistent",
+                    "passive": "Passive"
+                }
             }
         }
     }

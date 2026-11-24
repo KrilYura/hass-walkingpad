@@ -12,19 +12,28 @@ class TemporaryValue(Generic[T]):
         """Initialize temporary value."""
         self.has_value = False
         self.value: T | None = None
-        self.expiration_timestamp = 0
+        self.expiration_timestamp: float = 0
+        self.set_at_status_timestamp: float = 0
 
-    def set(self, value: T, expiration_timestamp: int) -> None:
+    def set(
+        self,
+        value: T,
+        expiration_timestamp: float,
+        *,
+        set_at_status_timestamp: float = 0,
+    ) -> None:
         """Set a temporary value with expiration."""
         self.has_value = True
         self.value = value
         self.expiration_timestamp = expiration_timestamp
+        self.set_at_status_timestamp = set_at_status_timestamp
 
     def reset(self) -> None:
         """Reset the temporary value."""
         self.has_value = False
+        self.value = None
 
-    def get(self, current_timestamp: int, default: T) -> T:
+    def get(self, current_timestamp: float, default: T) -> T:
         """Get the temporary value or default, checking expiration."""
         if self.has_value and current_timestamp > self.expiration_timestamp:
             self.reset()

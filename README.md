@@ -15,8 +15,9 @@ For FTMS / newer KingSmith protocols, see also [mcdax/hass-walkingpad](https://g
 Platform | Description
 -- | --
 `sensor` | WalkingPad usage metrics (distance, steps, duration, speed, state, mode).
-`switch` | **Connected**, **Auto status updates**, and optional belt control (when HA remote control is enabled).
+`select` | **Connection mode** (`polling` / `persistent` / `passive`).
 `number` | **Update interval** (seconds), plus optional speed control in manual mode (when HA remote control is enabled).
+`switch` | Optional belt control (when HA remote control is enabled).
 
 ## Installation
 
@@ -68,25 +69,19 @@ Enter the MAC address and a friendly name.
 
 Setup can succeed even if the pad is powered off; the integration connects later when the pad is available.
 
-### 3. Connection control (Connected / Auto status updates)
+### 3. Connection mode
 
-These entities are always created:
+The WalkingPad’s single BLE slot is managed by one **Connection mode** select (default `polling`) and an **Update interval** number (default `60` seconds). The next poll starts after the previous one finishes, plus this interval.
 
-| Entity | Role |
-| --- | --- |
-| **Connected** | When **on**, keeps a persistent BLE connection and polls status (legacy behaviour). Turns **off** automatically if connect fails, the link drops, or a status update times out. |
-| **Auto status updates** | When **Connected** is **off** and this is **on**, each poll does connect → read status → disconnect, so the hand remote can use the pad between polls. Unavailable (greyed out) while **Connected** is on. |
-| **Update interval** | Poll period in seconds (default `60`). Next poll starts after the previous one finishes, plus this interval. |
-
-Typical modes:
-
-| Connected | Auto status updates | Behaviour |
+| Mode | Behaviour | Hand remote |
 | --- | --- | --- |
-| On | (ignored) | Stay on BLE; live sensors; hand remote blocked |
-| Off | On | Brief connect each interval; remote works between polls |
-| Off | Off | No polling; all sensors unavailable; remote free |
+| **Polling** | Each cycle: connect → read status → disconnect → wait interval | Free between polls |
+| **Persistent** | Keeps a BLE connection and polls status on the interval | Blocked while linked |
+| **Passive** | No polling; sensors unavailable | Free |
 
-**State** sensor values include `off` when the pad is unreachable. Other metrics go unavailable while state is `off`. If both connection toggles are off, all sensors are unavailable.
+If **Persistent** cannot connect, the link drops, or a status update times out, the mode falls back to **Polling** so the remote can be used again.
+
+**State** sensor values include `off` when the pad is unreachable. Other metrics go unavailable while state is `off`. In **Passive** mode, all sensors are unavailable.
 
 ### 4. Remote control (from Home Assistant)
 
@@ -130,11 +125,11 @@ If it works, open an issue with the Bluetooth name and model so discovery can be
 
 ### The hand remote stops working
 
-The pad allows one BLE connection. Turn **Connected** **off** (and optionally leave **Auto status updates** on for periodic HA stats). With **Connected** on, the remote is blocked.
+The pad allows one BLE connection. Set **Connection mode** to **Polling** or **Passive**. **Persistent** blocks the remote while Home Assistant holds the link.
 
 ### Sensors stay on old values after I power the pad off
 
-Update to the latest `*-yk` release. Unreachable pads should move **State** to `off` and mark other sensors unavailable within about one update interval.
+Unreachable pads should move **State** to `off` and mark other sensors unavailable within about one update interval (when not in **Passive** mode).
 
 ## FAQ for developers
 

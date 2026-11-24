@@ -11,24 +11,25 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfLength, UnitOfSpeed, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from . import WalkingPadIntegrationData
-from .const import DOMAIN, BeltState, WalkingPadMode, WalkingPadStatus
+from . import WalkingPadConfigEntry
+from .const import BeltState, WalkingPadMode, WalkingPadStatus
 from .coordinator import WalkingPadCoordinator
-from .entity import walkingpad_device_info
+from .entity import WalkingPadEntity
 
 
 @dataclass(kw_only=True)
 class WalkingPadSensorEntityDescription(SensorEntityDescription):
-    """Describes Example sensor entity."""
+    """Describes a WalkingPad sensor entity."""
 
     value_fn: Callable[[WalkingPadStatus], StateType]
+    # When True, entity stays available while status reporting is enabled,
+    # including when the pad is unreachable (state reports "off").
+    available_when_off: bool = False
 
 
 SENSORS: tuple[WalkingPadSensorEntityDescription, ...] = (
@@ -36,7 +37,6 @@ SENSORS: tuple[WalkingPadSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.DISTANCE,
         icon="mdi:walk",
         key="walkingpad_distance",
-        name=None,
         native_unit_of_measurement=UnitOfLength.KILOMETERS,
         state_class=SensorStateClass.TOTAL_INCREASING,
         suggested_display_precision=2,
@@ -46,7 +46,6 @@ SENSORS: tuple[WalkingPadSensorEntityDescription, ...] = (
     WalkingPadSensorEntityDescription(
         icon="mdi:shoe-print",
         key="walkingpad_steps",
-        name=None,
         native_unit_of_measurement="steps",
         state_class=SensorStateClass.TOTAL_INCREASING,
         suggested_display_precision=0,
@@ -54,9 +53,9 @@ SENSORS: tuple[WalkingPadSensorEntityDescription, ...] = (
         value_fn=lambda status: status.get("session_steps", 0),
     ),
     WalkingPadSensorEntityDescription(
+        device_class=SensorDeviceClass.DURATION,
         icon="mdi:timer",
         key="walkingpad_duration_minutes",
-        name=None,
         native_unit_of_measurement=UnitOfTime.MINUTES,
         state_class=SensorStateClass.TOTAL_INCREASING,
         suggested_display_precision=0,
@@ -64,9 +63,9 @@ SENSORS: tuple[WalkingPadSensorEntityDescription, ...] = (
         value_fn=lambda status: round(status.get("session_running_time", 0) / 60, 1),
     ),
     WalkingPadSensorEntityDescription(
+        device_class=SensorDeviceClass.DURATION,
         icon="mdi:timer",
         key="walkingpad_duration_hours",
-        name=None,
         native_unit_of_measurement=UnitOfTime.HOURS,
         state_class=SensorStateClass.TOTAL_INCREASING,
         suggested_display_precision=1,
@@ -74,9 +73,9 @@ SENSORS: tuple[WalkingPadSensorEntityDescription, ...] = (
         value_fn=lambda status: round(status.get("session_running_time", 0) / 3600, 4),
     ),
     WalkingPadSensorEntityDescription(
+        device_class=SensorDeviceClass.DURATION,
         icon="mdi:timer",
         key="walkingpad_duration_days",
-        name=None,
         native_unit_of_measurement=UnitOfTime.DAYS,
         state_class=SensorStateClass.TOTAL_INCREASING,
         suggested_display_precision=1,
@@ -87,7 +86,6 @@ SENSORS: tuple[WalkingPadSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.SPEED,
         icon="mdi:speedometer",
         key="walkingpad_current_speed",
-        name=None,
         native_unit_of_measurement=UnitOfSpeed.KILOMETERS_PER_HOUR,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=1,
@@ -98,18 +96,17 @@ SENSORS: tuple[WalkingPadSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.ENUM,
         icon="mdi:state-machine",
         key="walkingpad_state",
-        name=None,
         options=[e.name.lower() for e in BeltState],
         translation_key="walkingpad_state",
         value_fn=lambda status: status.get(
             "belt_state", BeltState.UNKNOWN
         ).name.lower(),
+        available_when_off=True,
     ),
     WalkingPadSensorEntityDescription(
         device_class=SensorDeviceClass.ENUM,
         icon="mdi:cog",
         key="walkingpad_mode",
-        name=None,
         options=[e.name.lower() for e in WalkingPadMode],
         translation_key="walkingpad_mode",
         value_fn=lambda status: status.get("mode", WalkingPadMode.MANUAL).name.lower(),
@@ -118,27 +115,21 @@ SENSORS: tuple[WalkingPadSensorEntityDescription, ...] = (
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+    hass: HomeAssistant,
+    entry: WalkingPadConfigEntry,
+    async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the WalkingPad sensors."""
-
-    entry_data: WalkingPadIntegrationData = hass.data[DOMAIN][entry.entry_id]
-    coordinator = entry_data["coordinator"]
-
+    coordinator = entry.runtime_data.coordinator
     async_add_entities(
         WalkingPadSensor(coordinator, description) for description in SENSORS
     )
 
 
-class WalkingPadSensor(
-    CoordinatorEntity[WalkingPadCoordinator],
-    SensorEntity,
-):
+class WalkingPadSensor(WalkingPadEntity, SensorEntity):
     """Represent a WalkingPad sensor."""
 
     entity_description: WalkingPadSensorEntityDescription
-
-    _attr_has_entity_name = True
 
     def __init__(
         self,
@@ -146,13 +137,8 @@ class WalkingPadSensor(
         entity_description: WalkingPadSensorEntityDescription,
     ) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator)
-
         self.entity_description = entity_description
-        self._attr_unique_id = (
-            f"{coordinator.walkingpad_device.mac}-{self.entity_description.key}"
-        )
-        self._attr_device_info = walkingpad_device_info(coordinator.walkingpad_device)
+        super().__init__(coordinator, entity_description.key)
 
     @property
     def native_value(self) -> StateType:
@@ -164,14 +150,6 @@ class WalkingPadSensor(
         """Return if entity is available."""
         if not self.coordinator.status_reporting_enabled:
             return False
-
-        # State stays available so it can report "off" when the pad is unreachable.
-        if self.entity_description.key == "walkingpad_state":
+        if self.entity_description.available_when_off:
             return True
-
-        if self.coordinator.data.get("belt_state") == BeltState.OFF:
-            return False
-        if self.coordinator.stay_connected:
-            return self.coordinator.connected
-        # Connect-on-demand keeps last known values between successful polls.
-        return True
+        return self.status_available

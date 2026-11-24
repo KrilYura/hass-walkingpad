@@ -8,6 +8,28 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0-yk] - 2026-11-24
+
+### Changed
+
+- replace Connected / Auto status updates switches with a single **Connection mode** select (`polling` / `persistent` / `passive`)
+- persist connection mode and update interval in config entry options
+- fall back from persistent to polling when connect fails, the link drops, or a status update times out
+- manual setup no longer requires the pad to be advertising (scanner still required)
+
+### Fixed
+
+- serialize BLE connect / disconnect / commands with a real session lock
+- surface command failures to the UI instead of silently no-oping
+- belt optimistic state expiry no longer tied to the poll interval
+- make `connect()` idempotent when already connected
+- config entry unique id always uses a formatted MAC address
+- duration sensors use `duration` device class; mode sensor state translations
+
+### Added
+
+- unit tests for connection-mode migration and coordinator behaviour
+
 ## [0.3.6-yk] - 2026-11-24
 
 ### Fixed
@@ -103,8 +125,16 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 - current speed sensor
 - basic configuration guide in the README
 
-[unreleased]: https://github.com/madmatah/compare/v0.3.0...main
-[0.3.0]: https://github.com/madmatah/compare/v0.2.1...v0.3.0
-[0.2.1]: https://github.com/madmatah/compare/v0.2.0...v0.2.1
-[0.2.0]: https://github.com/madmatah/compare/v0.1.0...v0.2.0
+[unreleased]: https://github.com/KrilYura/hass-walkingpad/compare/0.4.0-yk...HEAD
+[0.4.0-yk]: https://github.com/KrilYura/hass-walkingpad/compare/0.3.6-yk...0.4.0-yk
+[0.3.6-yk]: https://github.com/KrilYura/hass-walkingpad/compare/0.3.5-yk...0.3.6-yk
+[0.3.5-yk]: https://github.com/KrilYura/hass-walkingpad/compare/0.3.4-yk...0.3.5-yk
+[0.3.4-yk]: https://github.com/KrilYura/hass-walkingpad/compare/0.3.3-yk...0.3.4-yk
+[0.3.3-yk]: https://github.com/KrilYura/hass-walkingpad/compare/0.3.2-yk...0.3.3-yk
+[0.3.2-yk]: https://github.com/KrilYura/hass-walkingpad/compare/0.3.1-yk...0.3.2-yk
+[0.3.1-yk]: https://github.com/KrilYura/hass-walkingpad/compare/0.3.0-yk...0.3.1-yk
+[0.3.0-yk]: https://github.com/KrilYura/hass-walkingpad/compare/v0.3.0...0.3.0-yk
+[0.3.0]: https://github.com/madmatah/hass-walkingpad/compare/v0.2.1...v0.3.0
+[0.2.1]: https://github.com/madmatah/hass-walkingpad/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/madmatah/hass-walkingpad/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/madmatah/hass-walkingpad/compare/eb2749688ebbf334fa29c5004511e8ee8680307f...v0.1.0

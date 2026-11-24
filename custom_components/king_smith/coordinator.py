@@ -1,21 +1,30 @@
 """The Walking Pad Coordinator."""
 
-import asyncio
-import logging
-from collections.abc import Callable
-from datetime import timedelta
-from typing import Any
+from __future__ import annotations
 
-from homeassistant.core import CALLBACK_TYPE, HassJob, HomeAssistant, callback
-from homeassistant.helpers.event import async_call_later
+import asyncio
+import contextlib
+import logging
+from datetime import timedelta
+
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .const import DOMAIN, BeltState, WalkingPadMode, WalkingPadStatus
+from .const import (
+    CONF_CONNECTION_MODE,
+    CONF_STATUS_UPDATE_INTERVAL,
+    DEFAULT_STATUS_UPDATE_SECONDS,
+    DOMAIN,
+    BeltState,
+    ConnectionMode,
+    WalkingPadMode,
+    WalkingPadStatus,
+    parse_connection_mode,
+)
 from .walkingpad import WalkingPad
 
 _LOGGER = logging.getLogger(__name__)
-
-DEFAULT_STATUS_UPDATE_SECONDS = 60
 
 # Connect can take up to ~10s; leave room for ask_stats + disconnect.
 STATUS_UPDATE_TIMEOUT_SECONDS = 20
@@ -27,25 +36,46 @@ STATUS_NOTIFICATION_WAIT_SECONDS = 0.75
 class WalkingPadCoordinator(DataUpdateCoordinator[WalkingPadStatus]):
     """WalkingPad coordinator."""
 
-    def __init__(self, hass: HomeAssistant, walkingpad_device: WalkingPad) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        walkingpad_device: WalkingPad,
+        config_entry: ConfigEntry,
+    ) -> None:
         """Initialise WalkingPad coordinator."""
-        super().__init__(
-            hass,
-            _LOGGER,
-            name=DOMAIN,
-            always_update=False,
-            update_interval=timedelta(seconds=DEFAULT_STATUS_UPDATE_SECONDS),
-            update_method=None,
-        )
+        self.config_entry = config_entry
         self.walkingpad_device = walkingpad_device
         self.walkingpad_device.register_status_callback(self._async_handle_update)
         self.walkingpad_device.register_disconnect_callback(
             self._async_on_device_disconnected
         )
-        self.stay_connected = True
-        self.auto_status_updates = True
-        self.status_update_interval_seconds = DEFAULT_STATUS_UPDATE_SECONDS
-        self.walkingpad_device.stay_connected = True
+
+        options = config_entry.options
+        mode = parse_connection_mode(options.get(CONF_CONNECTION_MODE))
+        interval = int(
+            options.get(CONF_STATUS_UPDATE_INTERVAL, DEFAULT_STATUS_UPDATE_SECONDS)
+        )
+        interval = max(1, interval)
+
+        self.connection_mode = mode
+        self.status_update_interval_seconds = interval
+        self.walkingpad_device.connection_mode = mode
+
+        update_interval = (
+            None
+            if mode == ConnectionMode.PASSIVE
+            else timedelta(seconds=interval)
+        )
+
+        super().__init__(
+            hass,
+            _LOGGER,
+            config_entry=config_entry,
+            name=DOMAIN,
+            always_update=False,
+            update_interval=update_interval,
+            update_method=None,
+        )
         self.data = {
             "belt_state": BeltState.OFF,
             "speed": 0.0,
@@ -55,10 +85,11 @@ class WalkingPadCoordinator(DataUpdateCoordinator[WalkingPadStatus]):
             "session_steps": 0,
             "status_timestamp": 0,
         }
+        self._reconnect_lock = asyncio.Lock()
 
     def _refresh_should_run(self) -> bool:
         """Return True when periodic status polling is enabled."""
-        return self.stay_connected or self.auto_status_updates
+        return self.connection_mode != ConnectionMode.PASSIVE
 
     @property
     def status_reporting_enabled(self) -> bool:
@@ -66,13 +97,24 @@ class WalkingPadCoordinator(DataUpdateCoordinator[WalkingPadStatus]):
         return self._refresh_should_run()
 
     def _apply_update_interval(self) -> None:
-        """Enable or disable the periodic refresh based on toggle state."""
+        """Enable or disable the periodic refresh based on mode."""
         if self._refresh_should_run():
             self.update_interval = timedelta(
                 seconds=self.status_update_interval_seconds
             )
         else:
             self.update_interval = None
+
+    async def _async_persist_options(self) -> None:
+        """Write connection mode and interval into the config entry options."""
+        new_options = {
+            **self.config_entry.options,
+            CONF_CONNECTION_MODE: self.connection_mode.value,
+            CONF_STATUS_UPDATE_INTERVAL: self.status_update_interval_seconds,
+        }
+        self.hass.config_entries.async_update_entry(
+            self.config_entry, options=new_options
+        )
 
     def _offline_status(self) -> WalkingPadStatus:
         """Return status for a powered-off / unreachable pad."""
@@ -83,25 +125,31 @@ class WalkingPadCoordinator(DataUpdateCoordinator[WalkingPadStatus]):
             "speed": 0.0,
         }
 
-    async def _async_mark_unreachable(self) -> WalkingPadStatus:
-        """Apply offline status and drop stay-connected when the link is lost."""
-        if self.stay_connected:
-            await self._async_revert_stay_connected()
+    async def _async_fall_back_to_polling(self, reason: str) -> WalkingPadStatus:
+        """Leave persistent mode after a failure and free the remote."""
+        if self.connection_mode == ConnectionMode.PERSISTENT:
+            _LOGGER.warning("%s; falling back to polling connection mode", reason)
+            self.connection_mode = ConnectionMode.POLLING
+            self.walkingpad_device.connection_mode = ConnectionMode.POLLING
+            self._apply_update_interval()
+            await self._async_persist_options()
+            self.async_update_listeners()
         return self._offline_status()
 
     @callback
     def _async_on_device_disconnected(self) -> None:
-        """Handle an unexpected BLE disconnect while Connected is on."""
+        """Handle an unexpected BLE disconnect while persistent mode is on."""
         self.hass.async_create_task(self._async_handle_unexpected_disconnect())
 
     async def _async_handle_unexpected_disconnect(self) -> None:
-        """Revert Connected and publish offline status after a link drop."""
-        # Auto status updates intentionally disconnect after each poll.
-        # That must not wipe the last reading or mark sensors unavailable.
-        if not self.stay_connected:
+        """Fall back from persistent and publish offline status after a link drop."""
+        # Polling intentionally disconnects after each poll.
+        if self.connection_mode != ConnectionMode.PERSISTENT:
             self.async_update_listeners()
             return
-        status = await self._async_mark_unreachable()
+        status = await self._async_fall_back_to_polling(
+            "WalkingPad BLE link disconnected"
+        )
         self.async_set_updated_data(status)
 
     async def _async_update_data(self) -> WalkingPadStatus:
@@ -113,14 +161,27 @@ class WalkingPadCoordinator(DataUpdateCoordinator[WalkingPadStatus]):
             not self.connected
             and not self.walkingpad_device.is_currently_visible()
         ):
-            return await self._async_mark_unreachable()
+            if self.connection_mode == ConnectionMode.PERSISTENT:
+                return await self._async_fall_back_to_polling(
+                    "WalkingPad not visible while persistent"
+                )
+            return self._offline_status()
+
+        previous_timestamp = self.data.get("status_timestamp", 0)
 
         try:
             async with asyncio.timeout(STATUS_UPDATE_TIMEOUT_SECONDS):
-                if self.stay_connected:
-                    await self.walkingpad_device.update_state()
+                if self.connection_mode == ConnectionMode.PERSISTENT:
+                    try:
+                        await self.walkingpad_device.update_state()
+                    except Exception:  # pylint: disable=broad-except
+                        return await self._async_fall_back_to_polling(
+                            "Unable to update WalkingPad status"
+                        )
                     if not self.connected:
-                        return await self._async_mark_unreachable()
+                        return await self._async_fall_back_to_polling(
+                            "Unable to connect to WalkingPad"
+                        )
                     return self.data
 
                 # Connect-on-demand: connect → ask stats → wait for notify → disconnect.
@@ -131,8 +192,11 @@ class WalkingPadCoordinator(DataUpdateCoordinator[WalkingPadStatus]):
                     else:
                         return self._offline_status()
                 finally:
-                    if not self.stay_connected:
+                    if self.connection_mode != ConnectionMode.PERSISTENT:
                         await self.walkingpad_device.disconnect()
+
+                if self.data.get("status_timestamp", 0) <= previous_timestamp:
+                    return self._offline_status()
                 return self.data
         except TimeoutError:
             _LOGGER.warning(
@@ -141,64 +205,62 @@ class WalkingPadCoordinator(DataUpdateCoordinator[WalkingPadStatus]):
             try:
                 await self.walkingpad_device.disconnect()
             except Exception:  # pylint: disable=broad-except
-                pass
-            return await self._async_mark_unreachable()
+                _LOGGER.debug("Disconnect after timeout failed", exc_info=True)
+            if self.connection_mode == ConnectionMode.PERSISTENT:
+                return await self._async_fall_back_to_polling(
+                    "WalkingPad status update timed out"
+                )
+            return self._offline_status()
+        except Exception:  # pylint: disable=broad-except
+            _LOGGER.warning("WalkingPad status update failed", exc_info=True)
+            with contextlib.suppress(Exception):
+                await self.walkingpad_device.disconnect()
+            if self.connection_mode == ConnectionMode.PERSISTENT:
+                return await self._async_fall_back_to_polling(
+                    "WalkingPad status update failed"
+                )
+            return self._offline_status()
 
     @property
     def connected(self) -> bool:
         """Get the device connection status."""
         return self.walkingpad_device.connected
 
-    async def _async_revert_stay_connected(self) -> None:
-        """Turn stay-connected off after a failed connection attempt."""
-        _LOGGER.warning(
-            "Unable to connect to WalkingPad; turning Connected off"
-        )
-        self.stay_connected = False
-        self.walkingpad_device.stay_connected = False
-        self._apply_update_interval()
-        self.async_update_listeners()
+    async def async_set_connection_mode(self, mode: ConnectionMode) -> None:
+        """Persist and apply a connection mode."""
+        if mode == self.connection_mode:
+            if mode == ConnectionMode.PERSISTENT and not self.connected:
+                await self.walkingpad_device.connect()
+                if not self.connected:
+                    await self._async_fall_back_to_polling(
+                        "Unable to connect to WalkingPad"
+                    )
+                    self.async_set_updated_data(self._offline_status())
+            return
 
-    async def async_set_stay_connected(self, enabled: bool) -> None:
-        """Persist the stay-connected preference and apply it."""
-        if not enabled:
-            if not self.stay_connected:
+        previous = self.connection_mode
+        self.connection_mode = mode
+        self.walkingpad_device.connection_mode = mode
+        self._apply_update_interval()
+        await self._async_persist_options()
+        _LOGGER.debug("Connection mode set to %s (was %s)", mode, previous)
+
+        if mode == ConnectionMode.PERSISTENT:
+            await self.walkingpad_device.connect()
+            if not self.connected:
+                status = await self._async_fall_back_to_polling(
+                    "Unable to connect to WalkingPad"
+                )
+                self.async_set_updated_data(status)
                 return
-            self.stay_connected = False
-            self.walkingpad_device.stay_connected = False
-            self._apply_update_interval()
-            _LOGGER.debug("Stay connected set to False")
-            await self.walkingpad_device.disconnect()
-            if self.auto_status_updates:
-                await self.async_request_refresh()
-            self.async_update_listeners()
-            return
-
-        # Enabling stay-connected: connect now, otherwise revert to off.
-        self.stay_connected = True
-        self.walkingpad_device.stay_connected = True
-        self._apply_update_interval()
-        _LOGGER.debug("Stay connected set to True")
-
-        await self.walkingpad_device.connect()
-        if not self.connected:
-            await self._async_revert_stay_connected()
-            return
-
-        await self.async_request_refresh()
-        self.async_update_listeners()
-
-    async def async_set_auto_status_updates(self, enabled: bool) -> None:
-        """Persist the auto status updates preference and apply it."""
-        if self.auto_status_updates == enabled:
-            return
-
-        self.auto_status_updates = enabled
-        self._apply_update_interval()
-        _LOGGER.debug("Auto status updates set to %s", enabled)
-
-        if enabled and not self.stay_connected and self._listeners:
             await self.async_request_refresh()
+        elif mode == ConnectionMode.POLLING:
+            if previous == ConnectionMode.PERSISTENT:
+                await self.walkingpad_device.disconnect()
+            if self._listeners:
+                await self.async_request_refresh()
+        else:  # PASSIVE
+            await self.walkingpad_device.disconnect()
 
         self.async_update_listeners()
 
@@ -211,8 +273,28 @@ class WalkingPadCoordinator(DataUpdateCoordinator[WalkingPadStatus]):
 
         self.status_update_interval_seconds = seconds
         self._apply_update_interval()
+        await self._async_persist_options()
         _LOGGER.debug("Status update interval set to %s seconds", seconds)
         self.async_update_listeners()
+
+    async def async_try_reconnect_persistent(self) -> None:
+        """Attempt a reconnect when an advertisement is seen in persistent mode."""
+        if self.connection_mode != ConnectionMode.PERSISTENT or self.connected:
+            return
+        if self._reconnect_lock.locked():
+            return
+        async with self._reconnect_lock:
+            if self.connection_mode != ConnectionMode.PERSISTENT or self.connected:
+                return
+            _LOGGER.debug("Advertisement seen; attempting persistent reconnect")
+            await self.walkingpad_device.connect()
+            if self.connected:
+                await self.async_request_refresh()
+            else:
+                status = await self._async_fall_back_to_polling(
+                    "Unable to reconnect to WalkingPad"
+                )
+                self.async_set_updated_data(status)
 
     @callback
     def _async_handle_update(self, status: WalkingPadStatus) -> None:
@@ -221,39 +303,7 @@ class WalkingPadCoordinator(DataUpdateCoordinator[WalkingPadStatus]):
             _LOGGER.debug("WalkingPad status update : %s", status)
             self.async_set_updated_data(status)
 
-    @callback
-    def _async_handle_disconnect(self) -> None:
-        """Trigger the callbacks for disconnected."""
-        self.async_update_listeners()
-
-    async def _async_connect(self, *_) -> None:
-        """Connect to the device when stay-connected mode is enabled."""
-        if self.stay_connected:
-            await self.walkingpad_device.connect()
-
-    async def _async_disconnect(self, *_) -> None:
-        """Disconnect the device."""
+    async def async_shutdown(self) -> None:
+        """Disconnect and shut down the coordinator."""
         await self.walkingpad_device.disconnect()
-
-    @callback
-    def async_add_listener(
-        self, update_callback: CALLBACK_TYPE, context: Any = None
-    ) -> Callable[[], None]:
-        """Optionally connect the device and listen for data updates."""
-        if not self._listeners and self.stay_connected:
-            async_call_later(
-                self.hass,
-                0,
-                HassJob(self._async_connect, "Connect to WalkingPad"),
-            )
-        return super().async_add_listener(update_callback, context)
-
-    @callback
-    def _unschedule_refresh(self) -> None:
-        """Unschedule any pending refresh since there is no longer any listeners."""
-        async_call_later(
-            self.hass,
-            0,
-            HassJob(self._async_disconnect, "Disonnect the WalkingPad"),
-        )
-        return super()._unschedule_refresh()
+        await super().async_shutdown()
