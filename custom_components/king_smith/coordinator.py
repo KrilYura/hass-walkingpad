@@ -39,6 +39,9 @@ class WalkingPadCoordinator(DataUpdateCoordinator[WalkingPadStatus]):
         )
         self.walkingpad_device = walkingpad_device
         self.walkingpad_device.register_status_callback(self._async_handle_update)
+        self.walkingpad_device.register_disconnect_callback(
+            self._async_on_device_disconnected
+        )
         self.stay_connected = True
         self.auto_status_updates = True
         self.status_update_interval_seconds = DEFAULT_STATUS_UPDATE_SECONDS
@@ -80,6 +83,22 @@ class WalkingPadCoordinator(DataUpdateCoordinator[WalkingPadStatus]):
             "speed": 0.0,
         }
 
+    async def _async_mark_unreachable(self) -> WalkingPadStatus:
+        """Apply offline status and drop stay-connected when the link is lost."""
+        if self.stay_connected:
+            await self._async_revert_stay_connected()
+        return self._offline_status()
+
+    @callback
+    def _async_on_device_disconnected(self) -> None:
+        """Handle an unexpected BLE disconnect while Connected is on."""
+        self.hass.async_create_task(self._async_handle_unexpected_disconnect())
+
+    async def _async_handle_unexpected_disconnect(self) -> None:
+        """Revert Connected and publish offline status after a link drop."""
+        status = await self._async_mark_unreachable()
+        self.async_set_updated_data(status)
+
     async def _async_update_data(self) -> WalkingPadStatus:
         if not self._refresh_should_run():
             return self.data
@@ -89,14 +108,14 @@ class WalkingPadCoordinator(DataUpdateCoordinator[WalkingPadStatus]):
             not self.connected
             and not self.walkingpad_device.is_currently_visible()
         ):
-            return self._offline_status()
+            return await self._async_mark_unreachable()
 
         try:
             async with asyncio.timeout(STATUS_UPDATE_TIMEOUT_SECONDS):
                 if self.stay_connected:
                     await self.walkingpad_device.update_state()
                     if not self.connected:
-                        return self._offline_status()
+                        return await self._async_mark_unreachable()
                     return self.data
 
                 # Connect-on-demand: connect → ask stats → wait for notify → disconnect.
@@ -118,7 +137,7 @@ class WalkingPadCoordinator(DataUpdateCoordinator[WalkingPadStatus]):
                 await self.walkingpad_device.disconnect()
             except Exception:  # pylint: disable=broad-except
                 pass
-            return self._offline_status()
+            return await self._async_mark_unreachable()
 
     @property
     def connected(self) -> bool:

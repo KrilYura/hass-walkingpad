@@ -93,6 +93,9 @@ class WalkingPadConnectedSwitch(SwitchEntity, RestoreEntity):
         last_state = await self.async_get_last_state()
         enabled = True if last_state is None else last_state.state == STATE_ON
         await self.coordinator.async_set_stay_connected(enabled)
+        self.async_on_remove(
+            self.coordinator.async_add_listener(self.async_write_ha_state)
+        )
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Enable persistent BLE connection."""

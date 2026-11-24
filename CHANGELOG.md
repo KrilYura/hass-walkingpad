@@ -8,6 +8,12 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.6-yk] - 2026-11-24
+
+### Fixed
+
+- turn Connected off when the BLE link drops or status updates time out while stay-connected
+
 ## [0.3.5-yk] - 2026-11-24
 
 ### Fixed

@@ -45,6 +45,7 @@ class WalkingPad:
         self._controller = Controller()
         self._controller.log_messages_info = False
         self._callbacks = []
+        self._disconnect_callbacks = []
         self._connection_status = WalkingPadConnectionStatus.NOT_CONNECTED
         # When False, control commands release the BLE link after completing.
         self.stay_connected = True
@@ -52,6 +53,32 @@ class WalkingPad:
 
     def _register_controller_callbacks(self):
         self._controller.handler_cur_status = self._on_status_update
+
+    def register_disconnect_callback(self, callback) -> None:
+        """Register a callback invoked on unexpected BLE disconnect."""
+        self._disconnect_callbacks.append(callback)
+
+    def _on_ble_disconnected(self, _client) -> None:
+        """Handle Bleak reporting that the GATT link dropped."""
+        was_connected = (
+            self._connection_status == WalkingPadConnectionStatus.CONNECTED
+        )
+        self._connection_status = WalkingPadConnectionStatus.NOT_CONNECTED
+        if was_connected:
+            _LOGGER.info("WalkingPad BLE link disconnected")
+            for callback in self._disconnect_callbacks:
+                callback()
+
+    def _attach_disconnect_callback(self) -> None:
+        """Attach disconnect callback to the active Bleak client if possible."""
+        client = self._controller.client
+        if client is None:
+            return
+        if hasattr(client, "set_disconnected_callback"):
+            client.set_disconnected_callback(self._on_ble_disconnected)
+        else:
+            # Bleak stores this attribute and invokes it when the link drops.
+            client._disconnected_callback = self._on_ble_disconnected  # noqa: SLF001
 
     def _begin_cmd(self) -> asyncio.Lock:
         return asyncio.Lock()
@@ -151,6 +178,7 @@ class WalkingPad:
                     self._connection_status = WalkingPadConnectionStatus.NOT_CONNECTED
                     return
                 await self._controller.run(ble_device)
+                self._attach_disconnect_callback()
                 self._connection_status = WalkingPadConnectionStatus.CONNECTED
                 await self._end_cmd()
             except (BleakError, TimeoutError) as err:
