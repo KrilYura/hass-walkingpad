@@ -28,7 +28,7 @@ from .const import (
     BeltState,
     WalkingPadMode,
 )
-from .coordinator import STATUS_UPDATE_INTERVAL, WalkingPadCoordinator
+from .coordinator import WalkingPadCoordinator
 from .entity import walkingpad_device_info
 from .utils import TemporaryValue
 
@@ -204,7 +204,7 @@ class WalkingPadBeltSwitchBase(SwitchEntity, ABC):
         """Set a temporary belt state."""
         expiration_timestamp = (
             self.coordinator.data.get("status_timestamp", 0)
-            + STATUS_UPDATE_INTERVAL.total_seconds()
+            + self.coordinator.status_update_interval_seconds
         )
         self._temporary_belt_state.set(belt_state, expiration_timestamp)
 
@@ -212,7 +212,7 @@ class WalkingPadBeltSwitchBase(SwitchEntity, ABC):
         """Set a temporary mode."""
         expiration_timestamp = (
             self.coordinator.data.get("status_timestamp", 0)
-            + STATUS_UPDATE_INTERVAL.total_seconds()
+            + self.coordinator.status_update_interval_seconds
         )
         self._temporary_mode.set(mode, expiration_timestamp)
 

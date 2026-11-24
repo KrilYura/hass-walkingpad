@@ -8,6 +8,12 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.1-yk] - 2026-11-24
+
+### Added
+
+- Update interval number entity (positive integer, seconds) to configure status polling
+
 ## [0.3.0-yk] - 2026-11-24
 
 ### Added

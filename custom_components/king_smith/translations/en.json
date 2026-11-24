@@ -112,6 +112,9 @@
             }
         },
         "number": {
+            "walkingpad_update_interval": {
+                "name": "Update interval"
+            },
             "walkingpad_speed": {
                 "name": "Speed"
             }

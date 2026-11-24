@@ -15,7 +15,7 @@ from .walkingpad import WalkingPad
 
 _LOGGER = logging.getLogger(__name__)
 
-STATUS_UPDATE_INTERVAL = timedelta(minutes=1)
+DEFAULT_STATUS_UPDATE_SECONDS = 60
 
 # The ph4_walkingpad has a 10s timeout in its connect method, you might have trouble if you set a smaller timeout here.
 STATUS_UPDATE_TIMEOUT_SECONDS = 11
@@ -34,13 +34,14 @@ class WalkingPadCoordinator(DataUpdateCoordinator[WalkingPadStatus]):
             _LOGGER,
             name=DOMAIN,
             always_update=False,
-            update_interval=STATUS_UPDATE_INTERVAL,
+            update_interval=timedelta(seconds=DEFAULT_STATUS_UPDATE_SECONDS),
             update_method=None,
         )
         self.walkingpad_device = walkingpad_device
         self.walkingpad_device.register_status_callback(self._async_handle_update)
         self.stay_connected = True
         self.auto_status_updates = True
+        self.status_update_interval_seconds = DEFAULT_STATUS_UPDATE_SECONDS
         self.walkingpad_device.stay_connected = True
         self.data = {
             "belt_state": BeltState.STOPPED,
@@ -58,9 +59,12 @@ class WalkingPadCoordinator(DataUpdateCoordinator[WalkingPadStatus]):
 
     def _apply_update_interval(self) -> None:
         """Enable or disable the periodic refresh based on toggle state."""
-        self.update_interval = (
-            STATUS_UPDATE_INTERVAL if self._refresh_should_run() else None
-        )
+        if self._refresh_should_run():
+            self.update_interval = timedelta(
+                seconds=self.status_update_interval_seconds
+            )
+        else:
+            self.update_interval = None
 
     async def _async_update_data(self) -> WalkingPadStatus:
         if not self._refresh_should_run():
@@ -120,6 +124,18 @@ class WalkingPadCoordinator(DataUpdateCoordinator[WalkingPadStatus]):
         if enabled and not self.stay_connected and self._listeners:
             await self.async_request_refresh()
 
+        self.async_update_listeners()
+
+    async def async_set_status_update_interval(self, seconds: int) -> None:
+        """Set the status polling interval in seconds."""
+        seconds = max(1, int(seconds))
+        if self.status_update_interval_seconds == seconds:
+            self._apply_update_interval()
+            return
+
+        self.status_update_interval_seconds = seconds
+        self._apply_update_interval()
+        _LOGGER.debug("Status update interval set to %s seconds", seconds)
         self.async_update_listeners()
 
     @callback
