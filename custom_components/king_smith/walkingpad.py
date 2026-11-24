@@ -68,8 +68,18 @@ class WalkingPad:
         """Update the cached BLE device from a scanner callback."""
         self._ble_device = ble_device
 
+    def is_currently_visible(self) -> bool:
+        """Return True if scanners currently see the WalkingPad advertising."""
+        return bluetooth.async_address_present(
+            self._hass, self._address, connectable=True
+        )
+
     def _resolve_ble_device(self) -> BLEDevice | None:
         """Refresh the BLE device from Home Assistant's Bluetooth cache."""
+        # Prefer an actively seen device; stale cache entries can linger for minutes
+        # after the pad is powered off and cause long failed connect attempts.
+        if not self.is_currently_visible():
+            return None
         ble_device = bluetooth.async_ble_device_from_address(
             self._hass, self._address, connectable=True
         )
@@ -134,7 +144,7 @@ class WalkingPad:
             try:
                 ble_device = self._resolve_ble_device()
                 if ble_device is None:
-                    _LOGGER.warning(
+                    _LOGGER.debug(
                         "WalkingPad %s is not currently visible via Bluetooth",
                         self._address,
                     )
@@ -142,13 +152,13 @@ class WalkingPad:
                     return
                 await self._controller.run(ble_device)
                 self._connection_status = WalkingPadConnectionStatus.CONNECTED
+                await self._end_cmd()
             except (BleakError, TimeoutError) as err:
                 _LOGGER.warning("Unable to connect to WalkingPad : %s", err)
                 self._connection_status = WalkingPadConnectionStatus.NOT_CONNECTED
             except Exception:  # pylint: disable=broad-except
                 _LOGGER.warning("Unable to connect to WalkingPad")
                 self._connection_status = WalkingPadConnectionStatus.NOT_CONNECTED
-            await self._end_cmd()
 
     async def disconnect(self) -> None:
         """Disconnect the device."""
@@ -157,10 +167,11 @@ class WalkingPad:
         lock = self._begin_cmd()
         async with lock:
             try:
-                await self._controller.disconnect()
+                await asyncio.wait_for(self._controller.disconnect(), timeout=3)
+            except (BleakError, TimeoutError, Exception):  # pylint: disable=broad-except
+                _LOGGER.debug("Disconnect finished with error", exc_info=True)
             finally:
                 self._connection_status = WalkingPadConnectionStatus.NOT_CONNECTED
-            await self._end_cmd()
 
     async def update_state(self) -> None:
         """Update device state."""

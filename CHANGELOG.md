@@ -8,6 +8,12 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.5-yk] - 2026-11-24
+
+### Fixed
+
+- detect powered-off pad promptly (skip stale BLE cache connects; treat update timeouts as offline)
+
 ## [0.3.4-yk] - 2026-11-24
 
 ### Changed

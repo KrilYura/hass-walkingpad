@@ -17,8 +17,8 @@ _LOGGER = logging.getLogger(__name__)
 
 DEFAULT_STATUS_UPDATE_SECONDS = 60
 
-# The ph4_walkingpad has a 10s timeout in its connect method, you might have trouble if you set a smaller timeout here.
-STATUS_UPDATE_TIMEOUT_SECONDS = 11
+# Connect can take up to ~10s; leave room for ask_stats + disconnect.
+STATUS_UPDATE_TIMEOUT_SECONDS = 20
 
 # Wait for the status notification after ask_stats before releasing the BLE link.
 STATUS_NOTIFICATION_WAIT_SECONDS = 0.75
@@ -84,24 +84,41 @@ class WalkingPadCoordinator(DataUpdateCoordinator[WalkingPadStatus]):
         if not self._refresh_should_run():
             return self.data
 
-        async with asyncio.timeout(STATUS_UPDATE_TIMEOUT_SECONDS):
-            if self.stay_connected:
-                await self.walkingpad_device.update_state()
-                if not self.connected:
-                    return self._offline_status()
-                return self.data
+        # Fast path: pad is not advertising (powered off / out of range).
+        if (
+            not self.connected
+            and not self.walkingpad_device.is_currently_visible()
+        ):
+            return self._offline_status()
 
-            # Connect-on-demand: connect → ask stats → wait for notify → disconnect.
+        try:
+            async with asyncio.timeout(STATUS_UPDATE_TIMEOUT_SECONDS):
+                if self.stay_connected:
+                    await self.walkingpad_device.update_state()
+                    if not self.connected:
+                        return self._offline_status()
+                    return self.data
+
+                # Connect-on-demand: connect → ask stats → wait for notify → disconnect.
+                try:
+                    await self.walkingpad_device.update_state()
+                    if self.connected:
+                        await asyncio.sleep(STATUS_NOTIFICATION_WAIT_SECONDS)
+                    else:
+                        return self._offline_status()
+                finally:
+                    if not self.stay_connected:
+                        await self.walkingpad_device.disconnect()
+                return self.data
+        except TimeoutError:
+            _LOGGER.warning(
+                "WalkingPad status update timed out; treating device as offline"
+            )
             try:
-                await self.walkingpad_device.update_state()
-                if self.connected:
-                    await asyncio.sleep(STATUS_NOTIFICATION_WAIT_SECONDS)
-                else:
-                    return self._offline_status()
-            finally:
-                if not self.stay_connected:
-                    await self.walkingpad_device.disconnect()
-            return self.data
+                await self.walkingpad_device.disconnect()
+            except Exception:  # pylint: disable=broad-except
+                pass
+            return self._offline_status()
 
     @property
     def connected(self) -> bool:
