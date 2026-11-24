@@ -18,6 +18,7 @@ CONF_PREFERRED_MODE: Final = "preferred_mode"
 class BeltState(IntEnum):
     """An enumeration of the possible belt states."""
 
+    OFF = -1  # device unreachable / powered off (not reported by the pad)
     STOPPED = 0
     ACTIVE = 1
     STANDBY = 5

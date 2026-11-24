@@ -88,7 +88,15 @@
                 "name": "Steps"
             },
             "walkingpad_state": {
-                "name": "State"
+                "name": "State",
+                "state": {
+                    "off": "Off",
+                    "stopped": "Stopped",
+                    "active": "Active",
+                    "standby": "Standby",
+                    "starting": "Starting",
+                    "unknown": "Unknown"
+                }
             },
             "walkingpad_mode": {
                 "name": "Mode"

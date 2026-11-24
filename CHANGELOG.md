@@ -8,6 +8,13 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.3-yk] - 2026-11-24
+
+### Changed
+
+- Auto status updates switch is unavailable while Connected is on
+- State reports off when the pad is unreachable; other sensors become unavailable
+
 ## [0.3.2-yk] - 2026-11-24
 
 ### Fixed

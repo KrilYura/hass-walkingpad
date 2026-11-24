@@ -122,6 +122,11 @@ class WalkingPadAutoStatusUpdatesSwitch(SwitchEntity, RestoreEntity):
         self._attr_device_info = walkingpad_device_info(coordinator.walkingpad_device)
 
     @property
+    def available(self) -> bool:
+        """Only meaningful when Connected is off."""
+        return not self.coordinator.stay_connected
+
+    @property
     def is_on(self) -> bool:
         """Return true when auto status updates are enabled."""
         return self.coordinator.auto_status_updates
@@ -132,14 +137,21 @@ class WalkingPadAutoStatusUpdatesSwitch(SwitchEntity, RestoreEntity):
         last_state = await self.async_get_last_state()
         enabled = True if last_state is None else last_state.state == STATE_ON
         await self.coordinator.async_set_auto_status_updates(enabled)
+        self.async_on_remove(
+            self.coordinator.async_add_listener(self.async_write_ha_state)
+        )
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Enable periodic status polling."""
+        if self.coordinator.stay_connected:
+            return
         await self.coordinator.async_set_auto_status_updates(True)
         self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Disable periodic status polling."""
+        if self.coordinator.stay_connected:
+            return
         await self.coordinator.async_set_auto_status_updates(False)
         self.async_write_ha_state()
 

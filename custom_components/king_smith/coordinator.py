@@ -44,7 +44,7 @@ class WalkingPadCoordinator(DataUpdateCoordinator[WalkingPadStatus]):
         self.status_update_interval_seconds = DEFAULT_STATUS_UPDATE_SECONDS
         self.walkingpad_device.stay_connected = True
         self.data = {
-            "belt_state": BeltState.STOPPED,
+            "belt_state": BeltState.OFF,
             "speed": 0.0,
             "mode": WalkingPadMode.MANUAL,
             "session_running_time": 0,
@@ -66,6 +66,15 @@ class WalkingPadCoordinator(DataUpdateCoordinator[WalkingPadStatus]):
         else:
             self.update_interval = None
 
+    def _offline_status(self) -> WalkingPadStatus:
+        """Return status for a powered-off / unreachable pad."""
+        _LOGGER.debug("WalkingPad unreachable; setting state to off")
+        return {
+            **self.data,
+            "belt_state": BeltState.OFF,
+            "speed": 0.0,
+        }
+
     async def _async_update_data(self) -> WalkingPadStatus:
         if not self._refresh_should_run():
             return self.data
@@ -73,12 +82,17 @@ class WalkingPadCoordinator(DataUpdateCoordinator[WalkingPadStatus]):
         async with asyncio.timeout(STATUS_UPDATE_TIMEOUT_SECONDS):
             if self.stay_connected:
                 await self.walkingpad_device.update_state()
+                if not self.connected:
+                    return self._offline_status()
                 return self.data
 
             # Connect-on-demand: connect → ask stats → wait for notify → disconnect.
             try:
                 await self.walkingpad_device.update_state()
-                await asyncio.sleep(STATUS_NOTIFICATION_WAIT_SECONDS)
+                if self.connected:
+                    await asyncio.sleep(STATUS_NOTIFICATION_WAIT_SECONDS)
+                else:
+                    return self._offline_status()
             finally:
                 if not self.stay_connected:
                     await self.walkingpad_device.disconnect()

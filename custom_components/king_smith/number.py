@@ -131,7 +131,9 @@ class WalkingPadSpeedNumberEntity(
     @property
     def available(self) -> bool:
         """Return if entity is available."""
+        if self.coordinator.data.get("belt_state") == BeltState.OFF:
+            return False
         if self.coordinator.stay_connected:
             return self.coordinator.connected
-        # Connect-on-demand keeps last known values between polls.
+        # Connect-on-demand keeps last known values between successful polls.
         return True
