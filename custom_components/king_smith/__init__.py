@@ -6,9 +6,15 @@ import logging
 from typing import TypedDict
 
 from homeassistant.components import bluetooth
+from homeassistant.components.bluetooth import (
+    BluetoothCallbackMatcher,
+    BluetoothChange,
+    BluetoothScanningMode,
+    BluetoothServiceInfoBleak,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryNotReady
 
 from .const import CONF_MAC, CONF_NAME, DOMAIN
@@ -44,23 +50,43 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
     address = entry.data.get(CONF_MAC)
 
+    # Only require a scanner at setup. The pad may be powered off / not advertising.
+    if bluetooth.async_scanner_count(hass, connectable=True) < 1:
+        raise ConfigEntryNotReady(
+            "No bluetooth scanner detected. \
+            Enable the bluetooth integration or ensure an esphome device \
+            is running as a bluetooth proxy"
+        )
+
     ble_device = bluetooth.async_ble_device_from_address(
-        hass, entry.data.get(CONF_MAC), connectable=True
+        hass, address, connectable=True
     )
     if ble_device is None:
-        # Check if any HA scanner on:
-        count_scanners = bluetooth.async_scanner_count(hass, connectable=True)
-        if count_scanners < 1:
-            raise ConfigEntryNotReady(
-                "No bluetooth scanner detected. \
-                Enable the bluetooth integration or ensure an esphome device \
-                is running as a bluetooth proxy"
-            )
-        raise ConfigEntryNotReady(f"Could not find Walkingpad with address {address}")
+        _LOGGER.info(
+            "WalkingPad %s is not currently visible; setup will continue and connect later",
+            address,
+        )
 
     name = entry.data.get(CONF_NAME) or DOMAIN
-    walkingpad_device = WalkingPad(name, ble_device)
+    walkingpad_device = WalkingPad(hass, name, address, ble_device)
     coordinator = WalkingPadCoordinator(hass, walkingpad_device)
+
+    @callback
+    def _async_update_ble(
+        service_info: BluetoothServiceInfoBleak,
+        change: BluetoothChange,
+    ) -> None:
+        """Keep the BLE device fresh when advertisements are seen."""
+        walkingpad_device.set_ble_device(service_info.device)
+
+    entry.async_on_unload(
+        bluetooth.async_register_callback(
+            hass,
+            _async_update_ble,
+            BluetoothCallbackMatcher({"address": address}),
+            BluetoothScanningMode.ACTIVE,
+        )
+    )
 
     integration_data: WalkingPadIntegrationData = {
         "device": walkingpad_device,

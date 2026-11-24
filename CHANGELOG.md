@@ -8,6 +8,12 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.2-yk] - 2026-11-24
+
+### Fixed
+
+- allow integration setup when the WalkingPad is powered off / not advertising
+
 ## [0.3.1-yk] - 2026-11-24
 
 ### Added

@@ -1,11 +1,15 @@
 """Walking Pad Api."""
 
+from __future__ import annotations
+
 import asyncio
 import logging
 from enum import Enum, unique
 
 from bleak import BleakError
 from bleak.backends.device import BLEDevice
+from homeassistant.components import bluetooth
+from homeassistant.core import HomeAssistant
 from ph4_walkingpad.pad import Controller, WalkingPadCurStatus
 
 from .const import BeltState, WalkingPadMode, WalkingPadStatus
@@ -25,10 +29,18 @@ class WalkingPadConnectionStatus(Enum):
 class WalkingPad:
     """The WalkingPad device."""
 
-    def __init__(self, name: str, ble_device: BLEDevice) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        name: str,
+        address: str,
+        ble_device: BLEDevice | None = None,
+    ) -> None:
         """Create a WalkingPad object."""
 
+        self._hass = hass
         self._name = name
+        self._address = address
         self._ble_device = ble_device
         self._controller = Controller()
         self._controller.log_messages_info = False
@@ -51,6 +63,19 @@ class WalkingPad:
         """Disconnect after a command when stay-connected mode is off."""
         if not self.stay_connected:
             await self.disconnect()
+
+    def set_ble_device(self, ble_device: BLEDevice) -> None:
+        """Update the cached BLE device from a scanner callback."""
+        self._ble_device = ble_device
+
+    def _resolve_ble_device(self) -> BLEDevice | None:
+        """Refresh the BLE device from Home Assistant's Bluetooth cache."""
+        ble_device = bluetooth.async_ble_device_from_address(
+            self._hass, self._address, connectable=True
+        )
+        if ble_device is not None:
+            self._ble_device = ble_device
+        return self._ble_device
 
     def _on_status_update(self, sender, data: WalkingPadCurStatus) -> None:
         """Update current state."""
@@ -80,7 +105,7 @@ class WalkingPad:
     @property
     def mac(self):
         """Mac address."""
-        return self._ble_device.address
+        return self._address
 
     @property
     def name(self):
@@ -107,7 +132,15 @@ class WalkingPad:
         async with lock:
             self._connection_status = WalkingPadConnectionStatus.CONNECTING
             try:
-                await self._controller.run(self._ble_device)
+                ble_device = self._resolve_ble_device()
+                if ble_device is None:
+                    _LOGGER.warning(
+                        "WalkingPad %s is not currently visible via Bluetooth",
+                        self._address,
+                    )
+                    self._connection_status = WalkingPadConnectionStatus.NOT_CONNECTED
+                    return
+                await self._controller.run(ble_device)
                 self._connection_status = WalkingPadConnectionStatus.CONNECTED
             except (BleakError, TimeoutError) as err:
                 _LOGGER.warning("Unable to connect to WalkingPad : %s", err)
