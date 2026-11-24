@@ -8,6 +8,10 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- link sensor, switch, and number entities to the WalkingPad device registry entry
+
 ## [0.3.0] - 2025-11-15
 
 ### Added

@@ -25,6 +25,7 @@ from .const import (
     WalkingPadMode,
 )
 from .coordinator import STATUS_UPDATE_INTERVAL, WalkingPadCoordinator
+from .entity import walkingpad_device_info
 from .utils import TemporaryValue
 
 SWITCH_KEY = "walkingpad_belt_switch"
@@ -35,6 +36,9 @@ async def async_setup_entry(
 ) -> None:
     """Set up the WalkingPad switch."""
 
+    entry_data: WalkingPadIntegrationData = hass.data[DOMAIN][entry.entry_id]
+    coordinator = entry_data["coordinator"]
+
     if not entry.options.get(CONF_REMOTE_CONTROL_ENABLED, False):
         entity_registry = er.async_get(hass)
         mac_address = entry.data.get(CONF_MAC)
@@ -44,9 +48,6 @@ async def async_setup_entry(
         if entity_id:
             entity_registry.async_remove(entity_id)
         return
-
-    entry_data: WalkingPadIntegrationData = hass.data[DOMAIN][entry.entry_id]
-    coordinator = entry_data["coordinator"]
 
     preferred_mode = entry.options.get(CONF_PREFERRED_MODE, DEFAULT_PREFERRED_MODE)
     manual_mode = WalkingPadMode.MANUAL.name.lower()
@@ -87,6 +88,7 @@ class WalkingPadBeltSwitchBase(SwitchEntity, ABC):
         self._attr_unique_id = (
             f"{coordinator.walkingpad_device.mac}-{self.entity_description.key}"
         )
+        self._attr_device_info = walkingpad_device_info(coordinator.walkingpad_device)
         super().__init__()
 
     @property

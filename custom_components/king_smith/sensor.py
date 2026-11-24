@@ -21,6 +21,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from . import WalkingPadIntegrationData
 from .const import DOMAIN, BeltState, WalkingPadMode, WalkingPadStatus
 from .coordinator import WalkingPadCoordinator
+from .entity import walkingpad_device_info
 
 
 @dataclass(kw_only=True)
@@ -151,6 +152,7 @@ class WalkingPadSensor(
         self._attr_unique_id = (
             f"{coordinator.walkingpad_device.mac}-{self.entity_description.key}"
         )
+        self._attr_device_info = walkingpad_device_info(coordinator.walkingpad_device)
 
     @property
     def native_value(self) -> StateType:

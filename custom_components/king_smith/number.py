@@ -19,6 +19,7 @@ from .const import (
     WalkingPadMode,
 )
 from .coordinator import WalkingPadCoordinator
+from .entity import walkingpad_device_info
 
 NUMBER_KEY = "walkingpad_speed"
 
@@ -65,6 +66,7 @@ class WalkingPadSpeedNumberEntity(
         """Initialize the speed number."""
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.walkingpad_device.mac}-{NUMBER_KEY}"
+        self._attr_device_info = walkingpad_device_info(coordinator.walkingpad_device)
 
     @property
     def native_value(self) -> float:
