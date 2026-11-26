@@ -82,6 +82,8 @@ The WalkingPad’s single BLE slot is managed by one **Connection mode** select 
 
 If **Persistent** cannot connect, the link drops, or a status update times out, the mode falls back to **Polling** so the remote can be used again.
 
+In **Polling** and **Passive**, Home Assistant remote-control actions (start/stop/speed/mode) also use connect-on-demand: connect → send the command → disconnect. The hand remote is free again afterward. **Persistent** keeps the link for those commands as well.
+
 **State** sensor values include `off` when the pad is unreachable. Other metrics go unavailable while state is `off`. In **Passive** mode, all sensors are unavailable.
 
 ### 4. Remote control (from Home Assistant)
