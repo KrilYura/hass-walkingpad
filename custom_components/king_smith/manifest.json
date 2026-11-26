@@ -57,6 +57,6 @@
     "ph4-walkingpad==1.0.2"
   ],
   "ssdp": [],
-  "version": "0.4.1-yk",
+  "version": "0.4.2-yk",
   "zeroconf": []
 }

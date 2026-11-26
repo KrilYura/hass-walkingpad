@@ -8,6 +8,16 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.2-yk] - 2026-11-27
+
+### Changed
+
+- clarify README that Polling/Passive HA remote-control actions use connect-on-demand (connect → command → disconnect)
+
+### Fixed
+
+- CI unit tests always load Home Assistant stubs so GitHub Actions can run without installing HA
+
 ## [0.4.1-yk] - 2026-11-25
 
 ### Added
@@ -131,7 +141,8 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 - current speed sensor
 - basic configuration guide in the README
 
-[unreleased]: https://github.com/KrilYura/hass-walkingpad/compare/0.4.1-yk...HEAD
+[unreleased]: https://github.com/KrilYura/hass-walkingpad/compare/0.4.2-yk...HEAD
+[0.4.2-yk]: https://github.com/KrilYura/hass-walkingpad/compare/0.4.1-yk...0.4.2-yk
 [0.4.1-yk]: https://github.com/KrilYura/hass-walkingpad/compare/0.4.0-yk...0.4.1-yk
 [0.4.0-yk]: https://github.com/KrilYura/hass-walkingpad/compare/0.3.6-yk...0.4.0-yk
 [0.3.6-yk]: https://github.com/KrilYura/hass-walkingpad/compare/0.3.5-yk...0.3.6-yk
