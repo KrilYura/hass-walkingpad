@@ -18,14 +18,13 @@ class ServiceValidationError(HomeAssistantError):
 
 
 def install_ha_stubs() -> None:
-    """Install stub modules into sys.modules if homeassistant is missing."""
-    try:
-        import homeassistant  # noqa: F401
-    except ImportError:
-        pass
-    else:
-        return
+    """Install stub modules into sys.modules for isolated unit tests.
 
+    Always install stubs, even when the real ``homeassistant`` package is
+    present. A bare ``pip install homeassistant`` does not pull integration
+    deps (e.g. ``aiousbwatcher``), so importing ``homeassistant.components.bluetooth``
+    fails in CI. Stubs keep these unit tests independent of that chain.
+    """
     ha = types.ModuleType("homeassistant")
     sys.modules["homeassistant"] = ha
 
